@@ -94,3 +94,27 @@
 - **Prompt**: Painterly epic fantasy concept art, ancient mythic bronze-age civilization, warm golden-hour light, weathered stone, moss, soft volumetric atmosphere, rich color, AAA game production quality. Game logo emblem: a single majestic golden winged sun disc with a central all-seeing divine eye, ornate bronze-age carved metal, subtle teal gem inlays, perfectly centered, symmetric, isolated on pure black background, glowing edges, no text.
 - **后处理**:
   - `ui/emblem.png` — black luma-key to alpha, trim, 512px
+
+### avatars
+- **模型**: google/gemini-3-pro-image
+- **时间**: 2026-07-02T16:51:14.319Z
+- **Prompt**: Painterly epic fantasy concept art, ancient mythic bronze-age civilization, warm golden-hour light, weathered stone, moss, soft volumetric atmosphere, rich color, AAA game production quality. Game sprite sheet: a strict 2x1 grid (two cells side by side) of full-body fantasy avatar sprites, consistent 3/4 top-down isometric angle, consistent scale, lighting from top-left, each figure fully inside its cell with margin, isolated on a uniform pure magenta background (#FF00FF). Left cell: a serene divine prophetess in flowing teal-and-white robes holding a tall golden staff topped with a glowing sun disc, gentle azure aura. Right cell: a menacing dark shaman in tattered crimson-and-black robes holding a crooked staff topped with a burning red skull totem, ember-red aura. No text.
+- **后处理**:
+  - `sprites/avatar_a.png` — grid-slice 2x1, magenta chroma-key + despill, trim, fit 220px
+  - `sprites/avatar_b.png` — grid-slice 2x1, magenta chroma-key + despill, trim, fit 220px
+
+### avatars
+- **模型**: cached
+- **时间**: 2026-07-02T16:52:22.813Z
+- **Prompt**: Painterly epic fantasy concept art, ancient mythic bronze-age civilization, warm golden-hour light, weathered stone, moss, soft volumetric atmosphere, rich color, AAA game production quality. Game sprite sheet: a strict 2x1 grid (two cells side by side) of full-body fantasy avatar sprites, consistent 3/4 top-down isometric angle, consistent scale, lighting from top-left, each figure fully inside its cell with margin, isolated on a uniform pure magenta background (#FF00FF). Left cell: a serene divine prophetess in flowing teal-and-white robes holding a tall golden staff topped with a glowing sun disc, gentle azure aura. Right cell: a menacing dark shaman in tattered crimson-and-black robes holding a crooked staff topped with a burning red skull totem, ember-red aura. No text.
+- **后处理**:
+  - `sprites/avatar_a.png` — grid-slice 2x1, magenta chroma-key + despill, trim, fit 220px
+  - `sprites/avatar_b.png` — grid-slice 2x1, magenta chroma-key + despill, trim, fit 220px
+
+### avatars
+- **模型**: google/gemini-3-pro-image
+- **时间**: 2026-07-02T17:02:02.653Z
+- **Prompt**: Game asset sprite sheet on a FLAT SOLID MAGENTA (#FF00FF) chroma-key background — the entire background must be one single uniform magenta color with no gradient, no texture, no vignette. A strict 2x1 grid (two cells side by side) of full-body painterly fantasy avatar sprites, consistent 3/4 top-down isometric angle, consistent scale, lighting from top-left, each figure fully inside its cell with margin. Left cell: a serene divine prophetess in flowing deep-teal robes with gold trim holding a tall golden staff topped with a glowing sun disc. Right cell: a menacing dark shaman in tattered crimson-and-black robes holding a crooked staff topped with a burning red skull totem. Rich saturated colors, AAA game quality, no text, no watermark.
+- **后处理**:
+  - `sprites/avatar_a.png` — grid-slice 2x1, magenta chroma-key + despill, trim, fit 220px
+  - `sprites/avatar_b.png` — grid-slice 2x1, magenta chroma-key + despill, trim, fit 220px

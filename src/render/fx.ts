@@ -1,11 +1,11 @@
 // 特效系统：粒子池（零运行时分配）+ 事件驱动发射器 + 神迹预瞄指示 + 屏幕闪光。
 // 每个神迹的反馈链在这里闭合：事件 → 粒子/光效/闪电/震屏（震屏在 camera）。
-import { TILE_H, TILE_W, H_STEP, MIRACLES } from '../core/const';
+import { TILE_H, TILE_W, H_STEP, MIRACLES, CAST_RANGE } from '../core/const';
 import { EventBus } from '../core/events';
 import { isoX } from './camera';
 
 const POOL_SIZE = 640;
-const fxTexCache: { soft?: any; spark?: any; smoke?: any; pillar?: any } = {};
+const fxTexCache: { soft?: any; spark?: any; smoke?: any; pillar?: any; marker?: any } = {};
 
 interface Particle {
   spr: any; alive: boolean;
@@ -25,7 +25,7 @@ export class FxRenderer {
   private emitters: { x: number; y: number; until: number; kind: string; acc: number }[] = [];
   private heightAt: (x: number, y: number) => number;
   private quality = 1;
-  private softTex: any; private sparkTex: any; private smokeTex: any; private pillarTex: any;
+  private softTex: any; private sparkTex: any; private smokeTex: any; private pillarTex: any; private markerTex: any;
 
   constructor(bus: EventBus, heightAt: (x: number, y: number) => number, viewSize: () => { w: number; h: number }) {
     this.heightAt = heightAt;
@@ -39,11 +39,13 @@ export class FxRenderer {
       fxTexCache.spark = softCircle(20, [255, 255, 255]);
       fxTexCache.smoke = softCircle(64, [255, 255, 255], 0.55);
       fxTexCache.pillar = pillarTexture();
+      fxTexCache.marker = markerTexture();
     }
     this.softTex = fxTexCache.soft;
     this.sparkTex = fxTexCache.spark;
     this.smokeTex = fxTexCache.smoke;
     this.pillarTex = fxTexCache.pillar;
+    this.markerTex = fxTexCache.marker;
 
     for (let i = 0; i < POOL_SIZE; i++) {
       const spr = new PIXI.Sprite(this.softTex);
@@ -91,7 +93,29 @@ export class FxRenderer {
     bus.on('fireStart', (e) => this.emitters.push({ x: e.x, y: e.y, until: performance.now() / 1000 + 5, kind: 'fire', acc: 0 }));
     bus.on('totemPlaced', (e) => this.upgradeFx(e.x, e.y));
     bus.on('armageddon', () => this.flashScreen(0.6, 0xff3030));
+    bus.on('avatarMove', (e) => this.moveMarker(e.x, e.y));
+    bus.on('avatarDeath', (e) => {
+      this.spawn(e.x, e.y, { n: 30, speed: [10, 60], up: [50, 160], grav: -60, life: [1, 2], s0: 0.4, s1: 0, tint: e.faction === 0 ? 0x9fe8ff : 0xffb0a8, blend: 'add', tex: this.sparkTex });
+      this.flashScreen(e.faction === 0 ? 0.45 : 0.25, e.faction === 0 ? 0x304860 : 0x602830);
+    });
+    bus.on('avatarRespawn', (e) => this.blessFx(e.x, e.y, 2));
   }
+
+  /** 移动令落点标记：双圈涟漪 */
+  private moveMarker(x: number, y: number): void {
+    const h = this.heightAt(x, y);
+    for (let i = 0; i < 2; i++) {
+      const spr = new PIXI.Sprite(this.markerTex);
+      spr.anchor.set(0.5);
+      spr.blendMode = 'add';
+      spr.tint = 0x8fe0ff;
+      spr.position.set(isoX(x, y), (x + y) * (TILE_H / 2) - h * H_STEP);
+      spr.zIndex = spr.y + 300;
+      this.world.addChild(spr);
+      this.markers.push({ spr, life: 0.7 + i * 0.18, max: 0.7 + i * 0.18 });
+    }
+  }
+  private markers: { spr: any; life: number; max: number }[] = [];
 
   // ── 粒子原语 ────────────────────────────────────────
   private spawn(wx: number, wy: number, opts: {
@@ -214,13 +238,26 @@ export class FxRenderer {
     this.flash.visible = true;
   }
 
-  /** 预瞄指示：范围环 + 可行性着色（金=可施放 / 灰蓝=冷却 / 红=信仰不足） */
-  updateCursor(sel: string | null, hx: number, hy: number, state: 'ok' | 'faith' | 'cooldown' | 'hidden'): void {
+  /** 预瞄指示：目标环 + 可行性着色 + 神使祈告半径大环（超程=红） */
+  updateCursor(sel: string | null, hx: number, hy: number, state: 'ok' | 'faith' | 'cooldown' | 'range' | 'dead' | 'hidden', avatar?: { x: number; y: number; alive: boolean }): void {
     const g = this.cursor;
     g.clear();
     if (!sel || state === 'hidden') return;
     const def = MIRACLES.find(m => m.id === sel);
     if (!def) return;
+    // 祈告半径大环（跟随神使）
+    if (avatar?.alive && sel !== 'flood') {
+      const pts2: [number, number][] = [];
+      for (let i = 0; i <= 64; i++) {
+        const a2 = (i / 64) * Math.PI * 2;
+        const wx = avatar.x + Math.cos(a2) * CAST_RANGE, wy = avatar.y + Math.sin(a2) * CAST_RANGE;
+        const hh = this.heightAt(wx, wy);
+        pts2.push([isoX(wx, wy), (wx + wy) * (TILE_H / 2) - hh * H_STEP]);
+      }
+      g.moveTo(pts2[0][0], pts2[0][1]);
+      for (const [px, py] of pts2.slice(1)) g.lineTo(px, py);
+      g.stroke({ width: 1.5, color: state === 'range' ? 0xff6050 : 0x8fd8e8, alpha: 0.35 });
+    }
     const color = state === 'ok' ? 0xffd870 : state === 'cooldown' ? 0x8fa8c0 : 0xff6050;
     const r = Math.max(0.8, def.radius);
     const pts: [number, number][] = [];
@@ -264,6 +301,15 @@ export class FxRenderer {
       l.g.alpha = Math.max(0, l.life / 0.28);
       if (l.life <= 0) { l.g.destroy(); this.lightnings.splice(i, 1); }
     }
+    // 移动标记涟漪
+    for (let i = this.markers.length - 1; i >= 0; i--) {
+      const m = this.markers[i];
+      m.life -= dt;
+      const t = 1 - m.life / m.max;
+      m.spr.scale.set(0.2 + t * 1.1, (0.2 + t * 1.1) * 0.5);
+      m.spr.alpha = (1 - t) * 0.8;
+      if (m.life <= 0) { m.spr.destroy(); this.markers.splice(i, 1); }
+    }
     // 光柱
     for (let i = this.pillars.length - 1; i >= 0; i--) {
       const p = this.pillars[i];
@@ -305,6 +351,19 @@ function softCircle(size: number, rgb: [number, number, number], hardness = 0.2)
   grad.addColorStop(1, `rgba(${rgb[0]},${rgb[1]},${rgb[2]},0)`);
   g.fillStyle = grad;
   g.fillRect(0, 0, size, size);
+  return PIXI.Texture.from(c);
+}
+
+function markerTexture(): any {
+  const c = document.createElement('canvas');
+  c.width = 128; c.height = 128;
+  const g = c.getContext('2d')!;
+  g.strokeStyle = 'rgba(255,255,255,0.95)';
+  g.lineWidth = 6;
+  g.beginPath(); g.arc(64, 64, 56, 0, Math.PI * 2); g.stroke();
+  g.strokeStyle = 'rgba(255,255,255,0.4)';
+  g.lineWidth = 14;
+  g.beginPath(); g.arc(64, 64, 48, 0, Math.PI * 2); g.stroke();
   return PIXI.Texture.from(c);
 }
 

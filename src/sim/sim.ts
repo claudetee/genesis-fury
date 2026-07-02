@@ -9,7 +9,11 @@ import {
 import { Rng } from '../core/rng';
 import { EventBus } from '../core/events';
 import { World, WorldSave } from './world';
-import { Follower, House, Totem, FactionState, FState } from './entities';
+import { Follower, House, Totem, Avatar, FactionState, FState } from './entities';
+import {
+  AVATAR_HP, AVATAR_SPEED, AVATAR_REGEN, AVATAR_CONTACT_R, AVATAR_CONTACT_DPS,
+  AVATAR_RESPAWN_S, AVATAR_INVULN_S,
+} from '../core/const';
 
 export class Sim {
   world: World;
@@ -19,6 +23,7 @@ export class Sim {
   followers: Follower[] = [];
   houses: House[] = [];
   totems: Totem[] = [];
+  avatars: Avatar[] = [];
   factions: FactionState[] = [];
   occupancy = new Int32Array(MAP * MAP).fill(-1);   // tile → house id
   reserved = new Int32Array(MAP * MAP).fill(-1);    // tile → builder follower id
@@ -34,6 +39,10 @@ export class Sim {
     this.rng = new Rng(seed ^ 0x9e3779b9);
     this.world = world ?? new World(bus, seed);
     this.factions = [0, 1].map(() => ({ faith: FAITH_START, cooldowns: {}, miracleCasts: 0, peakPop: 0, lossesRecent: 0 }));
+    this.avatars = [0, 1].map(f => {
+      const s = this.world.spawns[f];
+      return { faction: f, x: s.x, y: s.y - 1.5, px: s.x, py: s.y - 1.5, hp: AVATAR_HP, alive: true, targetX: s.x, targetY: s.y - 1.5, respawnAt: 0, invulnUntil: 0, stuck: 0 };
+    });
   }
 
   /** 新开一局：双方出生点各放初始信徒 */
@@ -137,9 +146,86 @@ export class Sim {
 
     this.totems = this.totems.filter(tt => tt.until > t);
     this.rebuildGrid();
+    this.tickAvatars();
     this.tickFollowers();
     this.tickHouses();
     this.checkGameOver();
+  }
+
+  // ── 神使化身 ────────────────────────────────────────
+  avatar(faction: number): Avatar { return this.avatars[faction]; }
+
+  /** 移动令（玩家点地 / AI 走位） */
+  commandAvatar(faction: number, x: number, y: number): boolean {
+    const a = this.avatars[faction];
+    if (!a.alive) return false;
+    a.targetX = Math.max(0.5, Math.min(MAP - 0.5, x));
+    a.targetY = Math.max(0.5, Math.min(MAP - 0.5, y));
+    if (faction === 0) this.bus.emit('avatarMove', { x: a.targetX, y: a.targetY });
+    return true;
+  }
+
+  private tickAvatars(): void {
+    const t = this.time;
+    for (const a of this.avatars) {
+      if (!a.alive) {
+        if (t >= a.respawnAt) {
+          const anchor = this.factionAnchor(a.faction);
+          a.alive = true; a.hp = AVATAR_HP;
+          a.x = a.px = anchor.x; a.y = a.py = anchor.y;
+          a.targetX = a.x; a.targetY = a.y;
+          a.invulnUntil = t + AVATAR_INVULN_S;
+          this.bus.emit('avatarRespawn', { faction: a.faction, x: a.x, y: a.y });
+        }
+        continue;
+      }
+      a.px = a.x; a.py = a.y;
+
+      // 移动（可穿沼泽但减速；水/岩浆不可入）
+      const dx = a.targetX - a.x, dy = a.targetY - a.y;
+      const d = Math.sqrt(dx * dx + dy * dy);
+      const inSwamp = this.world.isSwamp(Math.floor(a.x), Math.floor(a.y), t);
+      if (d > 0.1) {
+        const speed = AVATAR_SPEED * (inSwamp ? 0.45 : 1);
+        const step = Math.min(d, speed * SIM_DT);
+        let nx = a.x + (dx / d) * step, ny = a.y + (dy / d) * step;
+        if (!this.world.isWalkable(Math.floor(nx), Math.floor(ny), t)) {
+          if (this.world.isWalkable(Math.floor(nx), Math.floor(a.y), t)) ny = a.y;
+          else if (this.world.isWalkable(Math.floor(a.x), Math.floor(ny), t)) nx = a.x;
+          else {
+            a.stuck++;
+            if (a.stuck > 6) { a.targetX = a.x; a.targetY = a.y; a.stuck = 0; }
+            continue;
+          }
+        }
+        a.stuck = 0;
+        a.x = Math.max(0.5, Math.min(MAP - 0.5, nx));
+        a.y = Math.max(0.5, Math.min(MAP - 0.5, ny));
+      }
+
+      // 环境伤害 + 敌信徒围攻（接触光环，无逐徒状态）
+      const tx = Math.floor(a.x), ty = Math.floor(a.y);
+      if (t >= a.invulnUntil) {
+        if (this.world.isWater(tx, ty)) a.hp -= 5 * SIM_DT;
+        if (this.world.isLava(tx, ty, t)) a.hp -= 12 * SIM_DT;
+        this.nearbyFollowers(a.x, a.y, AVATAR_CONTACT_R, this.scratch);
+        let attackers = 0;
+        for (const f of this.scratch) if (f.faction !== a.faction && f.hp > 0) attackers++;
+        if (attackers > 0) {
+          a.hp -= Math.min(5, attackers) * AVATAR_CONTACT_DPS * SIM_DT;
+          if (this.rng.chance(0.05)) this.bus.emit('combat', { x: a.x, y: a.y });
+        } else if (a.hp < AVATAR_HP) {
+          a.hp = Math.min(AVATAR_HP, a.hp + AVATAR_REGEN * SIM_DT);
+        }
+      }
+
+      if (a.hp <= 0) {
+        a.alive = false;
+        a.respawnAt = t + AVATAR_RESPAWN_S;
+        this.factions[a.faction].lossesRecent += 2;
+        this.bus.emit('avatarDeath', { faction: a.faction, x: a.x, y: a.y });
+      }
+    }
   }
 
   private rebuildGrid(): void {
@@ -458,6 +544,7 @@ export class Sim {
       followers: this.followers.map(f => [f.id, f.faction, +f.x.toFixed(2), +f.y.toFixed(2), +f.hp.toFixed(1), +f.blessedUntil.toFixed(1)] as const),
       houses: this.houses.map(h => [h.id, h.faction, h.tx, h.ty, h.level, Math.round(h.hp), h.occupants, +h.buildProgress.toFixed(2), +h.fireUntil.toFixed(1), +h.blessedUntil.toFixed(1)] as const),
       totems: this.totems.map(tt => [tt.id, tt.faction, +tt.x.toFixed(1), +tt.y.toFixed(1), +tt.until.toFixed(1)] as const),
+      avatars: this.avatars.map(a => [a.faction, +a.x.toFixed(2), +a.y.toFixed(2), +a.hp.toFixed(1), a.alive ? 1 : 0, +a.respawnAt.toFixed(1)] as const),
       factions: this.factions.map(fs => ({ faith: Math.round(fs.faith), casts: fs.miracleCasts, peak: fs.peakPop, cd: { ...fs.cooldowns } })),
       floodUntil: this.floodUntil, nextId: this.nextId, rngState: this.rng.state(), armageddon: this.armageddonFired,
     };
@@ -476,6 +563,11 @@ export class Sim {
       sim.occupancy[ty * MAP + tx] = id;
     }
     for (const [id, faction, x, y, until] of d.totems) sim.totems.push({ id, faction, x, y, until });
+    if (d.avatars) for (const [faction, x, y, hp, alive, respawnAt] of d.avatars) {
+      const a = sim.avatars[faction];
+      a.x = a.px = a.targetX = x; a.y = a.py = a.targetY = y;
+      a.hp = hp; a.alive = alive === 1; a.respawnAt = respawnAt;
+    }
     for (let f = 0; f < 2; f++) {
       sim.factions[f].faith = d.factions[f].faith;
       sim.factions[f].miracleCasts = d.factions[f].casts;
@@ -493,6 +585,7 @@ export interface SaveData {
   followers: (readonly [number, number, number, number, number, number?])[];
   houses: (readonly [number, number, number, number, number, number, number, number, number?, number?])[];
   totems: (readonly [number, number, number, number, number])[];
+  avatars?: (readonly [number, number, number, number, number, number])[];
   factions: { faith: number; casts: number; peak: number; cd?: Record<string, number> }[];
   floodUntil: number; nextId: number; rngState: number; armageddon: boolean;
 }

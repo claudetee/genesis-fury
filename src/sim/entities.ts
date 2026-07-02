@@ -35,6 +35,18 @@ export interface Totem {
   until: number;
 }
 
+export interface Avatar {
+  faction: number;
+  x: number; y: number;
+  px: number; py: number;        // 上一 tick（渲染插值）
+  hp: number;
+  alive: boolean;
+  targetX: number; targetY: number;
+  respawnAt: number;             // 殒落后的转生 sim 时间
+  invulnUntil: number;
+  stuck: number;
+}
+
 export interface FactionState {
   faith: number;
   cooldowns: Record<string, number>;  // miracleId → 可再施放的 sim 时间

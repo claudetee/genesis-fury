@@ -66,6 +66,16 @@ export const TOTEM_DURATION = 45;
 export const QUAKE_BUILDING_COLLAPSE = 0.6;
 export const VOLCANO_LAVA_S = 14;    // 岩浆持续伤害时间
 
+// ── 神使化身 ──────────────────────────────────────────
+export const AVATAR_HP = 80;
+export const AVATAR_SPEED = 2.4;          // tile/s
+export const AVATAR_REGEN = 1.5;          // 脱战回复/s
+export const AVATAR_CONTACT_R = 1.2;      // 敌信徒接触判定半径
+export const AVATAR_CONTACT_DPS = 1.2;    // 每个接触敌徒的 dps（封顶 5 人）
+export const AVATAR_RESPAWN_S = 25;
+export const AVATAR_INVULN_S = 3;         // 转生无敌
+export const CAST_RANGE = 20;             // 神迹祈告半径（tile）
+
 // ── 终局 ──────────────────────────────────────────────
 export const ARMAGEDDON_S = 20 * 60;
 export const ARMAGEDDON_REGEN_MULT = 3;

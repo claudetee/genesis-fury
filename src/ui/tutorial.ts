@@ -16,12 +16,17 @@ export interface TutorialCtx {
   castCounts: Record<string, number>;
   camMoved: number;
   zoomChanged: number;
+  moveOrders: number;
 }
 
 const STEPS: Step[] = [
   {
     text: '欢迎降临神座。<b>拖拽</b>（或 WASD）移动你的视界，俯瞰这片大地。',
     done: (c) => c.camMoved > 260,
+  },
+  {
+    text: '发光的身影是你的<b>神使</b>——你在人间的唯一化身。<b>点击大地</b>，她将行至彼处。神迹只能降在她的祈告范围内。',
+    done: (c) => c.moveOrders >= 1,
   },
   {
     text: '用<b>滚轮</b>（或双指捏合）调整神视的高度。',
@@ -40,7 +45,7 @@ const STEPS: Step[] = [
     done: (c) => (c.castCounts['bless'] ?? 0) >= 1,
   },
   {
-    text: '东方的<b>绯红邪神</b>正在扩张。用 <b>雷罚</b>（热键 4）劈碎他们的屋舍，直至邪教徒一个不剩。愿尘世归一。',
+    text: '东方的<b>绯红邪神</b>正在扩张——他也有神使行走人间，杀死她可令其神迹失声。用 <b>雷罚</b>（热键 4）开启圣战，直至邪教徒一个不剩。',
     done: (c) => (c.castCounts['lightning'] ?? 0) >= 1,
   },
 ];

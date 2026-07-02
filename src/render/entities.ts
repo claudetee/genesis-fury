@@ -16,6 +16,7 @@ export class EntityRenderer {
   private followerViews = new Map<number, any>();
   private houseViews = new Map<number, any>();
   private totemViews = new Map<number, any>();
+  private avatarViews = new Map<number, any>();
   private followerTex: any[];
   private flameTex: any;
   private ringTex: any;
@@ -38,6 +39,40 @@ export class EntityRenderer {
 
   sync(alpha: number, time: number): void {
     const sim = this.sim;
+    // ── 神使化身 ──
+    for (const a of sim.avatars) {
+      let v = this.avatarViews.get(a.faction);
+      if (!v) {
+        v = new PIXI.Container();
+        const ring = new PIXI.Sprite(this.ringTex);
+        ring.anchor.set(0.5); ring.blendMode = 'add';
+        ring.tint = a.faction === 0 ? 0x8fe0ff : 0xff9088;
+        ring.scale.set(0.55); ring.y = 3;
+        const key = a.faction === 0 ? 'avatar_a' : 'avatar_b';
+        const spr = new PIXI.Sprite(PIXI.Texture.from(this.assets.sprites[key] as HTMLCanvasElement | HTMLImageElement));
+        spr.anchor.set(0.5, 0.94);
+        spr.scale.set(0.38);
+        v.addChild(ring); v.addChild(spr);
+        (v as { _spr?: unknown })._spr = spr;
+        (v as { _ring?: unknown })._ring = ring;
+        this.avatarViews.set(a.faction, v);
+        this.container.addChild(v);
+      }
+      const spr = (v as { _spr: any })._spr, ring = (v as { _ring: any })._ring;
+      if (!a.alive) { v.visible = false; continue; }
+      v.visible = true;
+      const x = a.px + (a.x - a.px) * alpha, y = a.py + (a.y - a.py) * alpha;
+      const h = this.heightAt(x, y);
+      v.x = isoX(x, y);
+      v.y = (x + y) * (TILE_H / 2) - h * 14;
+      v.zIndex = v.y + 1;
+      // 浮游感 + 光环脉动 + 受击/无敌反馈
+      spr.y = Math.sin(time * 2.2 + a.faction * 3) * 2.5 - 2;
+      ring.alpha = 0.35 + Math.sin(time * 3) * 0.15;
+      const hurt = a.hp < 30;
+      spr.tint = a.invulnUntil > time ? 0xbfffd0 : hurt && Math.sin(time * 12) > 0 ? 0xffb0a0 : 0xffffff;
+      spr.alpha = a.invulnUntil > time ? 0.65 + Math.sin(time * 10) * 0.2 : 1;
+    }
     // ── 信徒 ──
     const liveF = new Set<number>();
     for (const f of sim.followers) {

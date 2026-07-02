@@ -109,6 +109,25 @@ const ASSETS = {
       return outs;
     },
   },
+  avatars: {
+    prompt: `Game asset sprite sheet on a FLAT SOLID MAGENTA (#FF00FF) chroma-key background — the entire background must be one single uniform magenta color with no gradient, no texture, no vignette. A strict 2x1 grid (two cells side by side) of full-body painterly fantasy avatar sprites, consistent 3/4 top-down isometric angle, consistent scale, lighting from top-left, each figure fully inside its cell with margin. Left cell: a serene divine prophetess in flowing deep-teal robes with gold trim holding a tall golden staff topped with a glowing sun disc. Right cell: a menacing dark shaman in tattered crimson-and-black robes holding a crooked staff topped with a burning red skull totem. Rich saturated colors, AAA game quality, no text, no watermark.`,
+    post: async (raw) => {
+      const buf = await sharp(raw).resize(1024, 512, { fit: 'fill' }).png().toBuffer();
+      const names = ['avatar_a', 'avatar_b'];
+      const outs = [];
+      for (let i = 0; i < 2; i++) {
+        const cell = await sharp(buf).extract({ left: i * 512 + 12, top: 12, width: 488, height: 488 }).png().toBuffer();
+        // 模型可能无视品红底给渐变背景 → 先试 chroma-key，若背景残留改用四角泛洪
+        let keyed = await chromaKey(cell);
+        if (!(await isEdgeTransparent(keyed))) keyed = await floodKey(cell);
+        const trimmed = await sharp(keyed).trim({ threshold: 8 }).png().toBuffer();
+        const final = await sharp(trimmed).resize(220, 220, { fit: 'inside', withoutEnlargement: true }).png().toBuffer();
+        writeFileSync(join(OUT, 'sprites', `${names[i]}.png`), final);
+        outs.push({ file: `sprites/${names[i]}.png`, op: 'grid-slice 2x1, magenta chroma-key + despill, trim, fit 220px' });
+      }
+      return outs;
+    },
+  },
   emblem: {
     prompt: `${STYLE} Game logo emblem: a single majestic golden winged sun disc with a central all-seeing divine eye, ornate bronze-age carved metal, subtle teal gem inlays, perfectly centered, symmetric, isolated on pure black background, glowing edges, no text.`,
     post: async (raw) => {
@@ -166,6 +185,54 @@ async function chromaKey(png) {
     }
   }
   return sharp(d, { raw: { width: info.width, height: info.height, channels: 4 } }).png().toBuffer();
+}
+
+// 边缘是否已基本透明（chroma-key 是否奏效的判据）
+async function isEdgeTransparent(png) {
+  const { data, info } = await sharp(png).ensureAlpha().raw().toBuffer({ resolveWithObject: true });
+  const w = info.width, h = info.height;
+  let opaque = 0, total = 0;
+  for (let x = 0; x < w; x += 4) {
+    for (const y of [0, h - 1]) { total++; if (data[(y * w + x) * 4 + 3] > 40) opaque++; }
+  }
+  for (let y = 0; y < h; y += 4) {
+    for (const x of [0, w - 1]) { total++; if (data[(y * w + x) * 4 + 3] > 40) opaque++; }
+  }
+  return opaque / total < 0.12;
+}
+
+// 四角种子泛洪抠图：邻接容差（能吃渐变背景），主体边缘高对比处停下
+async function floodKey(png) {
+  const { data, info } = await sharp(png).ensureAlpha().raw().toBuffer({ resolveWithObject: true });
+  const w = info.width, h = info.height, d = data;
+  const bg = new Uint8Array(w * h);
+  const stack = [0, w - 1, (h - 1) * w, h * w - 1];
+  for (const s of stack) bg[s] = 1;
+  const TOL = 14; // 邻接像素差容忍（渐变平滑处 < TOL，主体轮廓 > TOL）
+  while (stack.length) {
+    const i = stack.pop();
+    const px = i % w, py = (i / w) | 0;
+    const base = i * 4;
+    for (const [nx, ny] of [[px + 1, py], [px - 1, py], [px, py + 1], [px, py - 1]]) {
+      if (nx < 0 || ny < 0 || nx >= w || ny >= h) continue;
+      const j = ny * w + nx;
+      if (bg[j]) continue;
+      const nb = j * 4;
+      const diff = Math.abs(d[nb] - d[base]) + Math.abs(d[nb + 1] - d[base + 1]) + Math.abs(d[nb + 2] - d[base + 2]);
+      if (diff <= TOL * 3) { bg[j] = 1; stack.push(j); }
+    }
+  }
+  // 背景置透明 + 边界羽化一圈
+  for (let i = 0; i < w * h; i++) if (bg[i]) d[i * 4 + 3] = 0;
+  for (let y = 1; y < h - 1; y++)
+    for (let x = 1; x < w - 1; x++) {
+      const i = y * w + x;
+      if (bg[i]) continue;
+      let bgN = 0;
+      if (bg[i - 1]) bgN++; if (bg[i + 1]) bgN++; if (bg[i - w]) bgN++; if (bg[i + w]) bgN++;
+      if (bgN > 0) d[i * 4 + 3] = Math.min(d[i * 4 + 3], 255 - bgN * 55);
+    }
+  return sharp(d, { raw: { width: w, height: h, channels: 4 } }).png().toBuffer();
 }
 
 async function blackKey(png) {

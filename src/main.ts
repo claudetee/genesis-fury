@@ -149,8 +149,13 @@ class Game {
     });
     bus.on('houseUpgrade', (e) => { if (this.sim!.houses.find(h => h.id === e.id)?.faction === 0 && e.level === 3) this.hud!.toast('一座圣殿拔地而起', 'good'); });
     bus.on('gameOver', (e) => { this.endPending = 1.8; void e; });
+    bus.on('avatarDeath', (e) => {
+      if (e.faction === 0) this.hud!.toast('你的神使殒落了！神迹暂时失声', 'warn');
+      else this.hud!.toast('绯红神使殒落！趁现在！', 'good');
+    });
+    bus.on('avatarRespawn', (e) => { if (e.faction === 0) this.hud!.toast('神使已于圣殿转生', 'good'); });
 
-    this.tutCtx = { sim, cam: this.renderer.camera, castCounts: {}, camMoved: 0, zoomChanged: 0 };
+    this.tutCtx = { sim, cam: this.renderer.camera, castCounts: {}, camMoved: 0, zoomChanged: 0, moveOrders: 0 };
     this.tutorial = new Tutorial(() => { this.settings.tutorialDone = true; this.applySettings(this.settings); });
     if (withTutorial) this.tutorial.start();
 
@@ -191,7 +196,14 @@ class Game {
   private tryCast(x: number, y: number): void {
     if (this.state !== 'playing' || !this.sim || !this.input || this.sim.over) return;
     const id = this.input.selected;
-    if (!id) return;
+    if (!id) {
+      // 无神迹选中：点地 = 神使移动令（Populous 正统操控）
+      if (this.sim.commandAvatar(0, x, y)) {
+        this.audio.play('uiClick');
+        if (this.tutCtx) this.tutCtx.moveOrders++;
+      } else this.hud?.toast('神使殒落，等待转生', 'warn');
+      return;
+    }
     const r = cast(this.sim, 0, id, x, y);
     if (r === 'ok' && this.tutCtx) this.tutCtx.castCounts[id] = (this.tutCtx.castCounts[id] ?? 0) + 1;
   }
@@ -283,13 +295,13 @@ class Game {
     // 输入（镜头键盘/边缘滚动/塑地连发）
     this.input?.update(dt);
 
-    // 预瞄指示
+    // 预瞄指示（含神使祈告半径环）
     if (this.input && this.renderer) {
       const sel = this.state === 'playing' ? this.input.selected : null;
       if (sel && this.sim) {
         const st = canCast(this.sim, 0, sel, this.input.hoverX, this.input.hoverY);
-        this.renderer.fx.updateCursor(sel, this.input.hoverX, this.input.hoverY,
-          st === 'ok' ? 'ok' : st === 'cooldown' ? 'cooldown' : st === 'faith' ? 'faith' : 'hidden');
+        const cursorState = st === 'ok' || st === 'cooldown' || st === 'faith' || st === 'range' || st === 'dead' ? st : 'hidden';
+        this.renderer.fx.updateCursor(sel, this.input.hoverX, this.input.hoverY, cursorState, this.sim.avatar(0));
       } else this.renderer.fx.updateCursor(null, 0, 0, 'hidden');
     }
 

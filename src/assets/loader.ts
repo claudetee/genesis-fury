@@ -11,7 +11,7 @@ export interface AssetDb {
 }
 
 const TERRAIN_NAMES = ['grass', 'sand', 'rock', 'snow', 'soil', 'lava'];
-const SPRITE_NAMES = ['house_a1', 'house_a2', 'house_a3', 'house_b1', 'house_b2', 'house_b3', 'totem_a', 'totem_b', 'ruin'];
+const SPRITE_NAMES = ['house_a1', 'house_a2', 'house_a3', 'house_b1', 'house_b2', 'house_b3', 'totem_a', 'totem_b', 'ruin', 'avatar_a', 'avatar_b'];
 const ICON_NAMES = ['raise', 'lower', 'bless', 'lightning', 'swamp', 'quake', 'flood', 'volcano', 'totem'];
 const UI_FILES: Record<string, string> = {
   panel_stone: 'assets/ui/panel_stone.webp', parchment: 'assets/ui/parchment.webp',
@@ -115,6 +115,28 @@ function fallbackSprite(name: string): HTMLCanvasElement {
       const a = i * 1.1, r = 18 + (i % 3) * 12;
       g.fillRect(Math.cos(a) * r - 9, Math.sin(a) * r * 0.5 - 6, 18 + (i % 2) * 8, 12);
     }
+    return c;
+  }
+  if (name.startsWith('avatar')) {
+    // 神使兜底：高挑长袍身形 + 法杖 + 顶部光珠
+    const robe2 = isB ? '#7a2c36' : '#2f7d94';
+    const glow = isB ? '#ff6a50' : '#8fe8ff';
+    g.fillStyle = 'rgba(0,0,0,0.3)';
+    g.beginPath(); g.ellipse(0, 4, 22, 8, 0, 0, Math.PI * 2); g.fill();
+    const grad2 = g.createLinearGradient(0, -110, 0, 0);
+    grad2.addColorStop(0, robe2); grad2.addColorStop(1, isB ? '#3a1418' : '#153a46');
+    g.fillStyle = grad2;
+    g.beginPath(); g.moveTo(0, -108); g.quadraticCurveTo(30, -50, 20, 0); g.lineTo(-20, 0); g.quadraticCurveTo(-30, -50, 0, -108); g.fill();
+    g.fillStyle = '#e8c49a';
+    g.beginPath(); g.arc(0, -112, 11, 0, Math.PI * 2); g.fill();
+    g.fillStyle = isB ? '#40171c' : '#dff3f8';
+    g.beginPath(); g.arc(0, -118, 9, Math.PI, 0); g.fill();
+    g.strokeStyle = '#6b4a2f'; g.lineWidth = 5;
+    g.beginPath(); g.moveTo(26, 6); g.lineTo(34, -128); g.stroke();
+    g.fillStyle = glow;
+    g.shadowColor = glow; g.shadowBlur = 18;
+    g.beginPath(); g.arc(34, -134, 9, 0, Math.PI * 2); g.fill();
+    g.shadowBlur = 0;
     return c;
   }
   if (name.startsWith('totem')) {

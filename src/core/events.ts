@@ -1,7 +1,10 @@
 // 轻量类型化事件总线 — sim 产生事件，render/audio/ui 消费，模块间零直接依赖
 export interface GameEvents {
   miracleCast: { id: string; x: number; y: number; faction: number };
-  miracleDenied: { id: string; reason: 'faith' | 'cooldown' | 'invalid' };
+  miracleDenied: { id: string; reason: 'faith' | 'cooldown' | 'invalid' | 'range' | 'dead' };
+  avatarMove: { x: number; y: number };
+  avatarDeath: { faction: number; x: number; y: number };
+  avatarRespawn: { faction: number; x: number; y: number };
   terrainChanged: { x0: number; y0: number; x1: number; y1: number };
   waterChanged: { level: number };
   entitySpawn: { kind: 'follower' | 'house' | 'totem'; id: number; faction: number; x: number; y: number };

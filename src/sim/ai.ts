@@ -1,6 +1,6 @@
 // 绯红邪神 AI：EXPAND / HARASS / DEFEND / CATACLYSM 状态机（见 DESIGN.md §6）
 // 与玩家共用 cast() 入口，无资源作弊；难度只影响决策频率与失误率。
-import { MAP, AI_TICK_S, AI_FUMBLE } from '../core/const';
+import { MAP, AI_TICK_S, AI_FUMBLE, CAST_RANGE, AVATAR_HP } from '../core/const';
 import { Sim } from './sim';
 import { cast, canCast, miracleCost } from './miracles';
 
@@ -24,8 +24,19 @@ export class EnemyGod {
     if (this.sim.rng.chance(AI_FUMBLE[this.difficulty])) return; // 失误：空转
 
     const sim = this.sim, fs = sim.factions[F];
+    const av = sim.avatar(F);
     const cap = sim.faithCap(F);
     const myPop = sim.pop(F), plPop = sim.pop(0);
+
+    // 化身走位优先级：殒落等转生 > 残血回撤 > 任务走位
+    if (!av.alive) return;
+    if (av.hp < AVATAR_HP * 0.35) {
+      const home = sim.factionAnchor(F);
+      sim.commandAvatar(F, home.x, home.y);
+      // 撤退途中仍可就近防御
+      if (this.tryDefend()) return;
+      return;
+    }
 
     // CATACLYSM：信仰充沛时的大招
     if (fs.faith > cap * 0.85) {
@@ -38,6 +49,17 @@ export class EnemyGod {
     if (fs.faith > cap * 0.4 && this.tryHarass()) return;
     // EXPAND：默认整地扩张
     this.tryExpand();
+  }
+
+  /** 目标超出祈告半径 → 命令化身逼近（停在半径 70% 处，别送到人堆里），返回是否已在射程 */
+  private approach(x: number, y: number): boolean {
+    const sim = this.sim, av = sim.avatar(F);
+    const dx = x - av.x, dy = y - av.y;
+    const d = Math.sqrt(dx * dx + dy * dy);
+    if (d <= CAST_RANGE * 0.95) return true;
+    const stop = d - CAST_RANGE * 0.7;
+    sim.commandAvatar(F, av.x + (dx / d) * stop, av.y + (dy / d) * stop);
+    return false;
   }
 
   /** 玩家人口最密的粗网格（8×8 桶）中心 */
@@ -57,6 +79,7 @@ export class EnemyGod {
   private tryCataclysmVolcano(): boolean {
     const hot = this.playerHotspot();
     if (!hot) return false;
+    if (!this.approach(hot.x, hot.y)) return true; // 在路上（本 tick 已消费）
     return cast(this.sim, F, 'volcano', hot.x, hot.y) === 'ok';
   }
 
@@ -81,7 +104,10 @@ export class EnemyGod {
       const ratio = h.hp / 90;
       if (ratio < worstHp) { worstHp = ratio; worst = { x: h.tx + 0.5, y: h.ty + 0.5 }; }
     }
-    if (worst && worstHp < 0.8) return cast(this.sim, F, 'bless', worst.x, worst.y) === 'ok';
+    if (worst && worstHp < 0.8) {
+      if (!this.approach(worst.x, worst.y)) return true;
+      return cast(this.sim, F, 'bless', worst.x, worst.y) === 'ok';
+    }
     return false;
   }
 
@@ -102,8 +128,10 @@ export class EnemyGod {
         for (const f of this.sim.followers) if (f.faction === 0) { target = { x: f.x, y: f.y }; break; }
       }
       if (!target) return false;
+      if (!this.approach(target.x, target.y)) return true;
       return cast(this.sim, F, 'lightning', target.x, target.y) === 'ok';
     }
+    if (!this.approach(hot.x, hot.y)) return true;
     return cast(this.sim, F, pick, hot.x, hot.y) === 'ok';
   }
 
@@ -129,25 +157,33 @@ export class EnemyGod {
       }
       if (nearOwnHouse) continue;
       const h = w.cornerH(cx, cy);
+      const tryShape = (id: 'raise' | 'lower'): boolean | null => {
+        const r = canCast(sim, F, id, cx, cy);
+        if (r === 'range') { this.approach(cx, cy); return true; }   // 走位过去，本 tick 消费
+        if (r === 'ok') return cast(sim, F, id, cx, cy) === 'ok';
+        return null;
+      };
       if (h <= w.waterLevel) {
         // 浅水抬升成陆
-        if (h >= w.waterLevel - 1 && canCast(sim, F, 'raise', cx, cy) === 'ok')
-          return cast(sim, F, 'raise', cx, cy) === 'ok';
+        if (h >= w.waterLevel - 1) { const r = tryShape('raise'); if (r !== null) return r; }
       } else if (w.tileMaxH(cx, cy) - w.tileMinH(cx, cy) >= 1 && w.tileAvgH(cx, cy) > w.waterLevel + 2) {
         // 崎岖高地削平
-        if (sim.factions[F].faith > miracleCost(sim, 'lower') * 4 && canCast(sim, F, 'lower', cx, cy) === 'ok')
-          return cast(sim, F, 'lower', cx, cy) === 'ok';
+        if (sim.factions[F].faith > miracleCost(sim, 'lower') * 4) { const r = tryShape('lower'); if (r !== null) return r; }
       } else if (w.tileMaxH(cx, cy) - w.tileMinH(cx, cy) >= 1) {
-        if (canCast(sim, F, 'raise', cx, cy) === 'ok') return cast(sim, F, 'raise', cx, cy) === 'ok';
+        const r = tryShape('raise'); if (r !== null) return r;
       }
     }
     // 领土远征：把图腾插到新平原引导移民
     if (sim.rng.chance(0.15)) {
       const ang = sim.rng.range(0, Math.PI * 2), r = sim.rng.range(8, 16);
       const x = anchor.x + Math.cos(ang) * r, y = anchor.y + Math.sin(ang) * r;
-      if (x > 2 && y > 2 && x < MAP - 2 && y < MAP - 2 && !w.isWater(Math.floor(x), Math.floor(y)))
+      if (x > 2 && y > 2 && x < MAP - 2 && y < MAP - 2 && !w.isWater(Math.floor(x), Math.floor(y))) {
+        if (!this.approach(x, y)) return true;
         return cast(sim, F, 'totem', x, y) === 'ok';
+      }
     }
+    // 无事可做：化身回巢休整
+    if (sim.rng.chance(0.3)) sim.commandAvatar(F, anchor.x + sim.rng.range(-3, 3), anchor.y + sim.rng.range(-3, 3));
     return false;
   }
 }

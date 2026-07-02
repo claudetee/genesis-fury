@@ -56,6 +56,8 @@ export class Hud {
       if (slot) { slot.classList.remove('deny'); void slot.offsetWidth; slot.classList.add('deny'); }
       if (e.reason === 'faith') this.toast('信仰之力不足', 'warn');
       else if (e.reason === 'cooldown') this.toast('神迹尚在酝酿', 'warn');
+      else if (e.reason === 'range') this.toast('超出神使的祈告范围——点击大地移动她', 'warn');
+      else if (e.reason === 'dead') this.toast('神使殒落，等待转生', 'warn');
     });
     bus.on('toast', (e) => this.toast(e.text, e.kind));
     bus.on('armageddon', () => this.toast('终焉审判降临！神力奔涌！', 'warn'));
@@ -108,6 +110,17 @@ export class Hud {
       $('faith-num').textContent = `${faith} / ${Math.floor(cap)}`;
     }
     this.setText('faith-regen', `+${sim.faithRegen(0).toFixed(1)}/s`);
+    // 神使状态条
+    const av = sim.avatar(0);
+    const avFill = $('avatar-fill');
+    if (av.alive) {
+      avFill.style.width = `${(av.hp / 80 * 100).toFixed(0)}%`;
+      avFill.style.background = av.hp < 28 ? 'linear-gradient(90deg,#a83a2e,#ff7a60)' : 'linear-gradient(90deg,#2a8a5e,#7ae0a8)';
+      this.setText('avatar-label', '神使');
+    } else {
+      avFill.style.width = '0%';
+      this.setText('avatar-label', `转生 ${Math.max(0, Math.ceil(av.respawnAt - sim.time))}s`);
+    }
     this.setText('pop-own', String(sim.pop(0)));
     this.setText('pop-foe', String(sim.pop(1)));
 

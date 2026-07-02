@@ -83,6 +83,16 @@ export class Minimap {
       g.strokeStyle = tt.faction === 0 ? '#6fe3ff' : '#ff7a70';
       g.strokeRect(tt.x - 2.5, tt.y - 2.5, 5, 5);
     }
+    // 神使：亮色菱形
+    for (const a of this.sim.avatars) {
+      if (!a.alive) continue;
+      g.fillStyle = a.faction === 0 ? '#eaffff' : '#ffe0dc';
+      g.beginPath();
+      g.moveTo(a.x, a.y - 3); g.lineTo(a.x + 3, a.y); g.lineTo(a.x, a.y + 3); g.lineTo(a.x - 3, a.y);
+      g.closePath(); g.fill();
+      g.strokeStyle = a.faction === 0 ? '#2aa8c8' : '#c04038';
+      g.stroke();
+    }
     // 视口四边形（世界像素 → tile 逆投影）
     g.strokeStyle = 'rgba(255,232,160,0.9)';
     g.lineWidth = 1;

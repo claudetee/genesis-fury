@@ -1,5 +1,5 @@
 // 神迹系统：验证（信仰/冷却/目标合法性）→ 执行 → 事件。玩家与 AI 共用同一入口，严格对称。
-import { MIRACLES, MiracleDef, BLESS_DURATION, SWAMP_DURATION, FLOOD_DURATION, TOTEM_DURATION, QUAKE_BUILDING_COLLAPSE, FOLLOWER_HP, ARMAGEDDON_S } from '../core/const';
+import { MIRACLES, MiracleDef, BLESS_DURATION, SWAMP_DURATION, FLOOD_DURATION, TOTEM_DURATION, QUAKE_BUILDING_COLLAPSE, FOLLOWER_HP, ARMAGEDDON_S, CAST_RANGE } from '../core/const';
 import { MAP, H_MAX } from '../core/const';
 import { Sim } from './sim';
 
@@ -12,19 +12,23 @@ export function miracleCost(sim: Sim, id: string): number {
   return def.cost;
 }
 
-export type CastResult = 'ok' | 'faith' | 'cooldown' | 'invalid';
+export type CastResult = 'ok' | 'faith' | 'cooldown' | 'invalid' | 'range' | 'dead';
 
 export function canCast(sim: Sim, faction: number, id: string, x: number, y: number): CastResult {
   const def = miracleById.get(id);
   if (!def) return 'invalid';
   const fs = sim.factions[faction];
+  // 神迹经由神使化身祈告：她殒落则失声，目标须在祈告半径内（洪水为全图仪式，只需在世）
+  const av = sim.avatar(faction);
+  if (!av.alive) return 'dead';
+  if (id !== 'flood') {
+    const dx = x - av.x, dy = y - av.y;
+    if (dx * dx + dy * dy > CAST_RANGE * CAST_RANGE) return 'range';
+  }
   if ((fs.cooldowns[id] ?? 0) > sim.time) return 'cooldown';
   if (fs.faith < miracleCost(sim, id)) return 'faith';
   if (id !== 'flood' && (x < 1 || y < 1 || x > MAP - 1 || y > MAP - 1)) return 'invalid';
   if (id === 'totem' && sim.world.isWater(Math.floor(x), Math.floor(y))) return 'invalid';
-  if ((id === 'raise' || id === 'lower') === false && id !== 'flood' && id !== 'totem') {
-    // 其余目标型神迹允许任意陆地/水面目标，无额外限制
-  }
   return 'ok';
 }
 
@@ -32,7 +36,7 @@ export function canCast(sim: Sim, faction: number, id: string, x: number, y: num
 export function cast(sim: Sim, faction: number, id: string, x: number, y: number): CastResult {
   const check = canCast(sim, faction, id, x, y);
   if (check !== 'ok') {
-    if (faction === 0) sim.bus.emit('miracleDenied', { id, reason: check as 'faith' | 'cooldown' | 'invalid' });
+    if (faction === 0) sim.bus.emit('miracleDenied', { id, reason: check });
     return check;
   }
   const def = miracleById.get(id)!;
