@@ -1,0 +1,171 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+<meta name="theme-color" content="#0a0f16">
+<title>创世之怒 GENESIS FURY — 上帝模拟战略</title>
+<meta name="description" content="扮演上古神明，塑造大地、降下神迹，引导信徒消灭绯红邪神。Populous 血统的网页上帝游戏。">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Cinzel:wght@500;700;900&family=Noto+Serif+SC:wght@400;600;900&family=ZCOOL+XiaoWei&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="styles.css">
+<link rel="icon" href="assets/ui/emblem.png" type="image/png">
+</head>
+<body>
+<div id="app">
+  <div id="game-root"></div>
+
+  <!-- ═══ HUD ═══ -->
+  <div id="hud" class="hidden">
+    <div id="hud-topleft" class="panel-stone">
+      <div id="faith-row">
+        <img id="faith-emblem" alt="" draggable="false">
+        <div id="faith-bar-wrap">
+          <div id="faith-bar"><div id="faith-fill"></div><div id="faith-spark"></div></div>
+          <div id="faith-text"><span id="faith-num">0</span><span id="faith-regen">+0/s</span></div>
+        </div>
+      </div>
+      <div id="pop-row">
+        <span class="pop-chip pop-own" title="苍蓝信众"><i class="dot dot-own"></i><b id="pop-own">0</b></span>
+        <span class="pop-vs">对</span>
+        <span class="pop-chip pop-foe" title="绯红信众"><i class="dot dot-foe"></i><b id="pop-foe">0</b></span>
+      </div>
+    </div>
+
+    <div id="hud-topright">
+      <div id="time-panel" class="panel-stone">
+        <span id="game-time">00:00</span>
+        <button id="btn-speed" class="btn-rune" title="游戏速度">1×</button>
+      </div>
+      <button id="btn-sound" class="btn-rune" title="声音">♪</button>
+      <button id="btn-settings" class="btn-rune" title="设置">⚙</button>
+      <button id="btn-pause" class="btn-rune" title="暂停 (Esc)">❚❚</button>
+    </div>
+    <div id="armageddon-banner" class="hidden">⚠ 终焉审判将至 <span id="armageddon-count"></span></div>
+
+    <div id="miracle-bar"></div>
+    <div id="miracle-tip" class="panel-parch hidden">
+      <b id="tip-name"></b><span id="tip-cost"></span>
+      <p id="tip-desc"></p>
+    </div>
+
+    <div id="minimap-panel" class="panel-stone">
+      <canvas id="minimap"></canvas>
+    </div>
+
+    <div id="debug-overlay" class="hidden"></div>
+  </div>
+
+  <!-- ═══ 屏幕层 ═══ -->
+  <div id="screen-layer">
+    <!-- 载入 -->
+    <section id="screen-loading" class="screen">
+      <img class="emblem-lg breathing" id="loading-emblem" alt="" draggable="false">
+      <h2 class="loading-title">创世之怒</h2>
+      <div class="load-bar"><div id="load-fill"></div></div>
+      <p id="load-label">唤醒沉睡的大地……</p>
+    </section>
+
+    <!-- 标题 -->
+    <section id="screen-title" class="screen hidden">
+      <div id="title-bg"></div>
+      <div id="title-content">
+        <img class="emblem-md breathing" id="title-emblem" alt="" draggable="false">
+        <h1 id="game-title">创世之怒</h1>
+        <p id="game-subtitle">GENESIS · FURY</p>
+        <nav id="title-menu">
+          <button class="btn-grand" id="btn-new">开始圣战</button>
+          <button class="btn-grand hidden" id="btn-continue">继续神谕</button>
+          <button class="btn-grand" id="btn-tutorial">教学引导</button>
+          <button class="btn-grand" id="btn-title-settings">神殿设置</button>
+        </nav>
+        <p id="title-footer">v1.0 · 一位神明的试炼 · WebGL 呈现</p>
+      </div>
+    </section>
+
+    <!-- 难度选择 -->
+    <section id="screen-difficulty" class="screen modal hidden">
+      <div class="panel-parch dialog">
+        <h3 class="dialog-title">选择试炼</h3>
+        <div class="diff-list">
+          <button class="btn-diff" data-diff="easy"><b>晨曦之神</b><span>绯红反应迟缓 · 初临神座的体验</span></button>
+          <button class="btn-diff" data-diff="normal"><b>正午之神</b><span>势均力敌的对弈 · 推荐</span></button>
+          <button class="btn-diff" data-diff="hard"><b>永夜之神</b><span>绯红冷酷精准 · 老练神明的战场</span></button>
+        </div>
+        <button class="btn-plain" id="btn-diff-back">返回</button>
+      </div>
+    </section>
+
+    <!-- 设置 -->
+    <section id="screen-settings" class="screen modal hidden">
+      <div class="panel-parch dialog">
+        <h3 class="dialog-title">神殿设置</h3>
+        <div class="setting-row"><label>总音量</label><input type="range" id="set-master" min="0" max="1" step="0.05"></div>
+        <div class="setting-row"><label>乐声</label><input type="range" id="set-music" min="0" max="1" step="0.05"></div>
+        <div class="setting-row"><label>音效</label><input type="range" id="set-sfx" min="0" max="1" step="0.05"></div>
+        <div class="setting-row"><label>画质</label>
+          <select id="set-quality"><option value="low">简朴</option><option value="medium">庄严</option><option value="high">神迹</option></select>
+        </div>
+        <div class="setting-row"><label>镜头速度</label><input type="range" id="set-camspeed" min="0.5" max="2" step="0.1"></div>
+        <div class="setting-row"><label>边缘滚动</label><input type="checkbox" id="set-edge"></div>
+        <div class="setting-actions">
+          <button class="btn-plain danger" id="btn-clear-save">抹除存档</button>
+          <button class="btn-grand" id="btn-settings-back">返回</button>
+        </div>
+      </div>
+    </section>
+
+    <!-- 暂停 -->
+    <section id="screen-pause" class="screen modal hidden">
+      <div class="panel-parch dialog">
+        <h3 class="dialog-title">时间凝滞</h3>
+        <nav class="dialog-menu">
+          <button class="btn-grand" id="btn-resume">继续统治</button>
+          <button class="btn-grand" id="btn-pause-settings">神殿设置</button>
+          <button class="btn-grand" id="btn-save-quit">保存并离开</button>
+          <button class="btn-plain danger" id="btn-abandon">放弃此界</button>
+        </nav>
+      </div>
+    </section>
+
+    <!-- 结算 -->
+    <section id="screen-end" class="screen hidden">
+      <div class="panel-parch dialog wide">
+        <h3 id="end-title" class="dialog-title">胜利</h3>
+        <p id="end-flavor"></p>
+        <div id="end-stats"></div>
+        <div id="end-rating"></div>
+        <nav class="dialog-menu row">
+          <button class="btn-grand" id="btn-again">再启创世</button>
+          <button class="btn-grand" id="btn-to-title">回归神座</button>
+        </nav>
+      </div>
+    </section>
+  </div>
+
+  <!-- 教学卡 -->
+  <div id="tutorial-card" class="panel-parch hidden">
+    <p id="tutorial-text"></p>
+    <div class="tut-actions">
+      <span id="tutorial-step">1/6</span>
+      <button class="btn-plain" id="btn-tut-skip">跳过教学</button>
+    </div>
+  </div>
+
+  <div id="toast-layer"></div>
+
+  <!-- 致命错误兜底 -->
+  <div id="error-overlay" class="hidden">
+    <div class="panel-parch dialog">
+      <h3 class="dialog-title">神迹失控</h3>
+      <p id="error-detail">世界之线出现了裂痕。</p>
+      <button class="btn-grand" onclick="location.reload()">重塑世界</button>
+    </div>
+  </div>
+</div>
+
+<script src="vendor/pixi.min.js"></script>
+<script src="dist/bundle.js"></script>
+</body>
+</html>
