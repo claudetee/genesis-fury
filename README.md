@@ -2,6 +2,8 @@
 
 > Populous 血统的网页上帝游戏。扮演苍蓝之神，塑造大地、降下神迹，引导信徒消灭绯红邪神。
 > PixiJS v8 · TypeScript · 全素材 AI 生成 · 全音频程序化合成 · 零运行时依赖安装。
+>
+> **🎮 在线试玩：https://claudetee.github.io/genesis-fury/**
 
 ![标题](docs/screenshots/02-title.png)
 ![战场](docs/screenshots/island-close.png)
