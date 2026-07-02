@@ -11,8 +11,12 @@ export interface AssetDb {
 }
 
 const TERRAIN_NAMES = ['grass', 'sand', 'rock', 'snow', 'soil', 'lava'];
-const SPRITE_NAMES = ['house_a1', 'house_a2', 'house_a3', 'house_b1', 'house_b2', 'house_b3', 'totem_a', 'totem_b', 'ruin', 'avatar_a', 'avatar_b'];
-const ICON_NAMES = ['raise', 'lower', 'bless', 'lightning', 'swamp', 'quake', 'flood', 'volcano', 'totem'];
+const SPRITE_NAMES = [
+  'house_a1', 'house_a2', 'house_a3', 'house_b1', 'house_b2', 'house_b3', 'totem_a', 'totem_b', 'ruin', 'avatar_a', 'avatar_b',
+  'barracks_a', 'barracks_b', 'mageschool_a', 'mageschool_b', 'sanctum_a', 'sanctum_b', 'tower_a', 'tower_b', 'wildtent',
+  'tree_oak', 'tree_pine', 'tree_palm', 'rock_big', 'rock_small', 'bush_flower', 'tree_dead', 'reeds', 'mushroom',
+];
+const ICON_NAMES = ['raise', 'lower', 'bless', 'lightning', 'swamp', 'quake', 'flood', 'volcano', 'totem', 'firestorm', 'teleport', 'barracks', 'mageschool', 'sanctum', 'tower'];
 const UI_FILES: Record<string, string> = {
   panel_stone: 'assets/ui/panel_stone.webp', parchment: 'assets/ui/parchment.webp',
   btn_stone: 'assets/ui/btn_stone.webp', emblem: 'assets/ui/emblem.png', title_hero: 'assets/ui/title_hero.webp',
@@ -117,6 +121,60 @@ function fallbackSprite(name: string): HTMLCanvasElement {
     }
     return c;
   }
+  // 装饰物兜底
+  if (name.startsWith('tree_') || name === 'bush_flower' || name === 'mushroom' || name === 'reeds' || name.startsWith('rock_')) {
+    if (name.startsWith('rock_')) {
+      g.fillStyle = '#8a8378';
+      const big = name === 'rock_big';
+      g.beginPath(); g.moveTo(-24, 0); g.lineTo(-12, big ? -30 : -16); g.lineTo(10, big ? -34 : -18); g.lineTo(24, -4); g.lineTo(12, 6); g.lineTo(-14, 6); g.closePath(); g.fill();
+      g.fillStyle = 'rgba(255,255,255,0.15)'; g.beginPath(); g.moveTo(-12, big ? -30 : -16); g.lineTo(10, big ? -34 : -18); g.lineTo(6, -8); g.closePath(); g.fill();
+      return c;
+    }
+    const palm = name === 'tree_palm', pine = name === 'tree_pine', dead = name === 'tree_dead';
+    g.strokeStyle = '#6b4a2f'; g.lineWidth = dead ? 4 : 6;
+    g.beginPath(); g.moveTo(0, 4); g.quadraticCurveTo(palm ? 10 : 0, -30, palm ? 16 : 0, -52); g.stroke();
+    if (dead) {
+      g.lineWidth = 3;
+      g.beginPath(); g.moveTo(0, -26); g.lineTo(-16, -42); g.moveTo(0, -36); g.lineTo(14, -50); g.stroke();
+    } else if (name === 'bush_flower' || name === 'mushroom' || name === 'reeds') {
+      g.fillStyle = name === 'mushroom' ? '#c0392b' : name === 'reeds' ? '#c8b46a' : '#4d7c33';
+      g.beginPath(); g.ellipse(0, -10, 20, 14, 0, 0, Math.PI * 2); g.fill();
+      if (name === 'bush_flower') { g.fillStyle = '#e88ab8'; for (const [fx2, fy2] of [[-8, -14], [6, -8], [0, -18]]) { g.beginPath(); g.arc(fx2, fy2, 3, 0, Math.PI * 2); g.fill(); } }
+    } else {
+      g.fillStyle = pine ? '#2e5a2e' : '#4d7c33';
+      if (pine) { g.beginPath(); g.moveTo(0, -78); g.lineTo(22, -30); g.lineTo(-22, -30); g.closePath(); g.fill(); g.beginPath(); g.moveTo(0, -60); g.lineTo(18, -18); g.lineTo(-18, -18); g.closePath(); g.fill(); }
+      else { g.beginPath(); g.ellipse(palm ? 16 : 0, -58, palm ? 26 : 24, palm ? 12 : 20, 0, 0, Math.PI * 2); g.fill(); }
+    }
+    return c;
+  }
+  // 军事建筑兜底
+  if (name.startsWith('barracks') || name.startsWith('mageschool') || name.startsWith('sanctum') || name.startsWith('tower') || name === 'wildtent') {
+    const isB2 = name.endsWith('_b');
+    const trim2 = name === 'wildtent' ? '#9a8a70' : isB2 ? '#e0525c' : '#59c2d6';
+    if (name.startsWith('tower')) {
+      g.fillStyle = isB2 ? '#4a3a40' : '#7d786c';
+      g.fillRect(-16, -84, 32, 88);
+      g.fillStyle = 'rgba(0,0,0,0.2)'; g.fillRect(0, -84, 16, 88);
+      g.fillStyle = trim2; g.fillRect(-20, -92, 40, 10);
+      g.fillStyle = '#ffb040';
+      g.shadowColor = '#ff8020'; g.shadowBlur = 12;
+      g.beginPath(); g.arc(0, -98, 7, 0, Math.PI * 2); g.fill();
+      g.shadowBlur = 0;
+      return c;
+    }
+    // 屋型（武堂/祭坛/圣所/野帐）
+    const wall2 = name === 'wildtent' ? '#8a7658' : name.startsWith('sanctum') ? '#e8e2d2' : isB2 ? '#5a4048' : '#c9b795';
+    g.fillStyle = 'rgba(0,0,0,0.28)';
+    g.beginPath(); g.ellipse(0, 14, 42, 15, 0, 0, Math.PI * 2); g.fill();
+    g.fillStyle = wall2;
+    g.beginPath(); g.moveTo(-40, 0); g.lineTo(0, 20); g.lineTo(40, 0); g.lineTo(40, -34); g.lineTo(0, -14); g.lineTo(-40, -34); g.closePath(); g.fill();
+    g.fillStyle = trim2;
+    g.beginPath(); g.moveTo(-44, -34); g.lineTo(0, -12); g.lineTo(44, -34); g.lineTo(0, -62); g.closePath(); g.fill();
+    if (name.startsWith('barracks')) { g.strokeStyle = '#d8dce2'; g.lineWidth = 3; g.beginPath(); g.moveTo(-10, -50); g.lineTo(10, -30); g.moveTo(10, -50); g.lineTo(-10, -30); g.stroke(); }
+    if (name.startsWith('mageschool')) { g.fillStyle = '#ff9440'; g.shadowColor = '#ff7020'; g.shadowBlur = 10; g.beginPath(); g.arc(0, -40, 6, 0, Math.PI * 2); g.fill(); g.shadowBlur = 0; }
+    if (name.startsWith('sanctum')) { g.fillStyle = '#d8b84a'; g.beginPath(); g.arc(0, -42, 5, 0, Math.PI * 2); g.fill(); }
+    return c;
+  }
   if (name.startsWith('avatar')) {
     // 神使兜底：高挑长袍身形 + 法杖 + 顶部光珠
     const robe2 = isB ? '#7a2c36' : '#2f7d94';
@@ -197,6 +255,12 @@ function fallbackIcon(name: string): HTMLCanvasElement {
     case 'flood': { for (let r = 0; r < 3; r++) { g.beginPath(); for (let x = 0; x <= 88; x += 4) g.lineTo(36 + x, 66 + r * 24 + Math.sin(x / 12) * 7); g.stroke(); } break; }
     case 'volcano': P([[46, 118], [72, 54], [88, 54], [114, 118]], true); P([[80, 44], [70, 24]]); P([[84, 42], [92, 20]]); P([[76, 46], [58, 30]]); break;
     case 'totem': { g.fillRect(70, 40, 20, 80); P([[56, 52], [104, 52]]); P([[60, 76], [100, 76]]); P([[64, 98], [96, 98]]); g.beginPath(); g.arc(80, 32, 10, 0, Math.PI * 2); g.fill(); break; }
+    case 'firestorm': { for (const [sx2, sy2] of [[58, 40], [88, 30], [108, 56]] as const) { P([[sx2, sy2], [sx2 - 18, sy2 + 42]]); g.beginPath(); g.arc(sx2 - 22, sy2 + 50, 6, 0, Math.PI * 2); g.fill(); } P([[46, 118], [116, 118]]); break; }
+    case 'teleport': { g.beginPath(); for (let a2 = 0; a2 < Math.PI * 5; a2 += 0.2) { const rr = 8 + a2 * 7; g.lineTo(80 + Math.cos(a2) * rr, 80 + Math.sin(a2) * rr * 0.8); } g.stroke(); break; }
+    case 'barracks': P([[58, 46], [104, 106]]); P([[104, 46], [58, 106]]); P([[52, 40], [66, 40]]); P([[98, 40], [112, 40]]); break;
+    case 'mageschool': { g.beginPath(); g.arc(80, 92, 18, 0, Math.PI, true); g.fill(); P([[80, 70], [80, 40]]); g.beginPath(); g.arc(80, 34, 9, 0, Math.PI * 2); g.fill(); break; }
+    case 'sanctum': { g.beginPath(); g.moveTo(80, 36); g.quadraticCurveTo(102, 48, 100, 82); g.lineTo(60, 82); g.quadraticCurveTo(58, 48, 80, 36); g.fill(); P([[64, 96], [96, 96]]); g.beginPath(); g.arc(80, 108, 5, 0, Math.PI * 2); g.fill(); break; }
+    case 'tower': { g.fillRect(66, 52, 28, 66); P([[58, 52], [102, 52]]); P([[62, 42], [70, 52]]); P([[98, 42], [90, 52]]); g.beginPath(); g.arc(80, 34, 8, 0, Math.PI * 2); g.fill(); break; }
     default: { g.beginPath(); g.arc(80, 80, 26, 0, Math.PI * 2); g.stroke(); }
   }
   return c;

@@ -128,6 +128,60 @@ const ASSETS = {
       return outs;
     },
   },
+  doodads: {
+    prompt: `Game asset sprite sheet on a FLAT SOLID MAGENTA (#FF00FF) chroma-key background — entire background one single uniform magenta, no gradient, no texture. A strict 3x3 grid of painterly fantasy nature doodad sprites, consistent 3/4 top-down isometric angle, consistent scale, lighting from top-left, each sprite fully inside its cell with margin. Row 1: a lush broadleaf oak tree; a tall dark pine tree; a swaying tropical palm tree. Row 2: a large mossy grey boulder; a cluster of three small rocks; a flowering pink bush. Row 3: a gnarled dead tree; a patch of tall golden reeds; two red-capped mushrooms. Rich saturated painterly colors, AAA game quality, no text.`,
+    post: async (raw) => {
+      const buf = await sharp(raw).resize(1026, 1026, { fit: 'fill' }).png().toBuffer();
+      const names = ['tree_oak', 'tree_pine', 'tree_palm', 'rock_big', 'rock_small', 'bush_flower', 'tree_dead', 'reeds', 'mushroom'];
+      const outs = [];
+      for (let i = 0; i < 9; i++) {
+        const cx = (i % 3) * 342, cy = Math.floor(i / 3) * 342;
+        const cell = await sharp(buf).extract({ left: cx + 8, top: cy + 8, width: 326, height: 326 }).png().toBuffer();
+        let keyed = await chromaKey(cell);
+        if (!(await isEdgeTransparent(keyed))) keyed = await floodKey(cell);
+        const trimmed = await sharp(keyed).trim({ threshold: 8 }).png().toBuffer();
+        const final = await sharp(trimmed).resize(140, 140, { fit: 'inside', withoutEnlargement: true }).png().toBuffer();
+        writeFileSync(join(OUT, 'sprites', `${names[i]}.png`), final);
+        outs.push({ file: `sprites/${names[i]}.png`, op: 'grid-slice 3x3, chroma/flood key, trim, fit 140px' });
+      }
+      return outs;
+    },
+  },
+  buildings2: {
+    prompt: `Game asset sprite sheet on a FLAT SOLID MAGENTA (#FF00FF) chroma-key background — entire background one single uniform magenta, no gradient. A strict 3x3 grid of painterly bronze-age military building sprites, consistent 3/4 top-down isometric angle, consistent scale, lighting from top-left, each fully inside its cell with margin. Row 1 (teal-blue faction, azure banners): a warrior training lodge with crossed swords sign and teal banner; a fire-mage academy with a burning brazier and teal roof; a small white marble sanctuary with a golden bell and teal trim. Row 2 (crimson faction): a dark warrior training lodge with crossed axes and red banner; a dark fire-mage academy with green flame brazier and red roof; a dark bone shrine with a red crystal. Row 3: a tall teal stone guard tower with a watch fire on top; a tall crimson dark guard tower with a skull totem on top; a primitive neutral grey wildman tent with bones. Rich saturated painterly colors, AAA quality, no text.`,
+    post: async (raw) => {
+      const buf = await sharp(raw).resize(1026, 1026, { fit: 'fill' }).png().toBuffer();
+      const names = ['barracks_a', 'mageschool_a', 'sanctum_a', 'barracks_b', 'mageschool_b', 'sanctum_b', 'tower_a', 'tower_b', 'wildtent'];
+      const outs = [];
+      for (let i = 0; i < 9; i++) {
+        const cx = (i % 3) * 342, cy = Math.floor(i / 3) * 342;
+        const cell = await sharp(buf).extract({ left: cx + 8, top: cy + 8, width: 326, height: 326 }).png().toBuffer();
+        let keyed = await chromaKey(cell);
+        if (!(await isEdgeTransparent(keyed))) keyed = await floodKey(cell);
+        const trimmed = await sharp(keyed).trim({ threshold: 8 }).png().toBuffer();
+        const final = await sharp(trimmed).resize(210, 210, { fit: 'inside', withoutEnlargement: true }).png().toBuffer();
+        writeFileSync(join(OUT, 'sprites', `${names[i]}.png`), final);
+        outs.push({ file: `sprites/${names[i]}.png`, op: 'grid-slice 3x3, chroma/flood key, trim, fit 210px' });
+      }
+      return outs;
+    },
+  },
+  icons2: {
+    prompt: `${STYLE} Game UI icon sheet: a strict 3x2 grid of six square icons, each a glowing rune symbol carved into a round weathered stone medallion, consistent style with clear equal margins between cells, dark background between cells. Row 1: a meteor shower of three falling burning stars; a swirling teleport portal spiral; crossed swords. Row 2: a fireball in an open palm; a white chapel bell with light rays; a stone watchtower. No text, no numbers.`,
+    post: async (raw) => {
+      const buf = await sharp(raw).resize(1026, 684, { fit: 'fill' }).png().toBuffer();
+      const names = ['firestorm', 'teleport', 'barracks', 'mageschool', 'sanctum', 'tower'];
+      const outs = [];
+      for (let i = 0; i < 6; i++) {
+        const cx = (i % 3) * 342, cy = Math.floor(i / 3) * 342;
+        const cell = await sharp(buf).extract({ left: cx + 20, top: cy + 20, width: 302, height: 302 }).resize(160, 160).png().toBuffer();
+        const masked = await circleMask(cell, 160);
+        writeFileSync(join(OUT, 'icons', `${names[i]}.png`), masked);
+        outs.push({ file: `icons/${names[i]}.png`, op: 'grid-slice 3x2, inset, circle mask, 160px' });
+      }
+      return outs;
+    },
+  },
   emblem: {
     prompt: `${STYLE} Game logo emblem: a single majestic golden winged sun disc with a central all-seeing divine eye, ornate bronze-age carved metal, subtle teal gem inlays, perfectly centered, symmetric, isolated on pure black background, glowing edges, no text.`,
     post: async (raw) => {

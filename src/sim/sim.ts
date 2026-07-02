@@ -9,10 +9,15 @@ import {
 import { Rng } from '../core/rng';
 import { EventBus } from '../core/events';
 import { World, WorldSave } from './world';
-import { Follower, House, Totem, Avatar, FactionState, FState } from './entities';
+import { Follower, House, Totem, Avatar, MilBuilding, FactionState, FState, FClass } from './entities';
 import {
   AVATAR_HP, AVATAR_SPEED, AVATAR_REGEN, AVATAR_CONTACT_R, AVATAR_CONTACT_DPS,
   AVATAR_RESPAWN_S, AVATAR_INVULN_S,
+  CLASS_HP, CLASS_DPS, CLASS_SPEED, TRAIN_COST, TRAIN_TIME,
+  FIREMAGE_RANGE, FIREMAGE_DPS, FIREMAGE_SHOT_CD,
+  PREACH_RANGE, PREACH_INTERVAL, PREACH_CHANCE,
+  TOWER_HP, TOWER_RANGE, TOWER_DPS, TOWER_SHOT_CD, MIL_HP,
+  WILDMEN_COUNT, WILD_FACTION, BUILDINGS,
 } from '../core/const';
 
 export class Sim {
@@ -24,6 +29,7 @@ export class Sim {
   houses: House[] = [];
   totems: Totem[] = [];
   avatars: Avatar[] = [];
+  mils: MilBuilding[] = [];
   factions: FactionState[] = [];
   occupancy = new Int32Array(MAP * MAP).fill(-1);   // tile → house id
   reserved = new Int32Array(MAP * MAP).fill(-1);    // tile → builder follower id
@@ -45,7 +51,7 @@ export class Sim {
     });
   }
 
-  /** 新开一局：双方出生点各放初始信徒 */
+  /** 新开一局：双方出生点各放初始信徒 + 全图散布中立野人 */
   seedStart(): void {
     for (let f = 0; f < 2; f++) {
       const s = this.world.spawns[f];
@@ -53,6 +59,17 @@ export class Sim {
         const a = (i / START_FOLLOWERS) * Math.PI * 2;
         this.spawnFollower(f, s.x + Math.cos(a) * 2.5, s.y + Math.sin(a) * 2.5);
       }
+    }
+    // 野人：远离双方出生地的可行走陆地
+    let placed = 0, guard = 0;
+    while (placed < WILDMEN_COUNT && guard++ < 800) {
+      const x = this.rng.range(8, MAP - 8), y = this.rng.range(8, MAP - 8);
+      if (!this.world.isWalkable(Math.floor(x), Math.floor(y), 0)) continue;
+      let minD = 1e9;
+      for (const s of this.world.spawns) minD = Math.min(minD, (x - s.x) ** 2 + (y - s.y) ** 2);
+      if (minD < 18 * 18) continue;
+      this.spawnFollower(WILD_FACTION, x, y);
+      placed++;
     }
   }
 
@@ -69,7 +86,8 @@ export class Sim {
     for (const f of this.followers) if (f.faction === faction) weighted += 1;
     for (const h of this.houses) if (h.faction === faction && h.buildProgress >= 1)
       weighted += h.occupants * HOUSE_FAITH_MULT[h.level - 1];
-    let r = FAITH_BASE_REGEN + FAITH_PER_POP * weighted;
+    // 次线性：大帝国边际递减，防信仰爆表
+    let r = FAITH_BASE_REGEN + FAITH_PER_POP * Math.pow(weighted, 0.88);
     if (this.time >= ARMAGEDDON_S) r *= ARMAGEDDON_REGEN_MULT;
     return r;
   }
@@ -86,15 +104,48 @@ export class Sim {
   }
 
   // ── 生成 ────────────────────────────────────────────
-  spawnFollower(faction: number, x: number, y: number): Follower {
+  spawnFollower(faction: number, x: number, y: number, cls: FClass = FClass.Brave): Follower {
     const f: Follower = {
-      id: this.nextId++, faction, x, y, px: x, py: y, hp: FOLLOWER_HP,
+      id: this.nextId++, faction, cls, x, y, px: x, py: y, hp: CLASS_HP[cls],
       state: FState.Wander, targetX: x, targetY: y, buildX: -1, buildY: -1,
       enemyId: -1, blessedUntil: 0, wanderTimer: 0, stuck: 0,
+      shotCd: 0, preachCd: 0, trainId: -1,
     };
     this.followers.push(f);
     this.bus.emit('entitySpawn', { kind: 'follower', id: f.id, faction, x, y });
     return f;
+  }
+
+  // ── 军事建筑 ────────────────────────────────────────
+  milAt(tx: number, ty: number): MilBuilding | null {
+    for (const m of this.mils) if (m.tx === tx && m.ty === ty) return m;
+    return null;
+  }
+
+  /** 营造：由神迹入口（miracles.placeBuilding）调用，地块合法性已验证 */
+  placeMil(faction: number, kind: MilBuilding['kind'], tx: number, ty: number): MilBuilding {
+    const m: MilBuilding = {
+      id: this.nextId++, faction, kind, tx, ty,
+      hp: kind === 'tower' ? TOWER_HP : MIL_HP,
+      traineeId: -1, trainT: 0, shotCd: 0,
+    };
+    this.mils.push(m);
+    this.occupancy[ty * MAP + tx] = m.id;   // 与房屋共用占位表（id 空间共享 nextId 不冲突）
+    this.bus.emit('entitySpawn', { kind: 'mil', id: m.id, faction, x: tx + 0.5, y: ty + 0.5 });
+    return m;
+  }
+
+  destroyMil(m: MilBuilding, cause: string): void {
+    const i = this.mils.indexOf(m);
+    if (i < 0) return;
+    this.mils.splice(i, 1);
+    if (this.occupancy[m.ty * MAP + m.tx] === m.id) this.occupancy[m.ty * MAP + m.tx] = -1;
+    // 受训中的信徒放出
+    if (m.traineeId >= 0) {
+      const f = this.followers.find(ff => ff.id === m.traineeId);
+      if (f) { f.state = FState.Wander; f.trainId = -1; f.wanderTimer = 0; }
+    }
+    this.bus.emit('entityDeath', { kind: 'mil', id: m.id, faction: m.faction, x: m.tx + 0.5, y: m.ty + 0.5, cause });
   }
 
   placeHouse(faction: number, tx: number, ty: number): House {
@@ -149,7 +200,110 @@ export class Sim {
     this.tickAvatars();
     this.tickFollowers();
     this.tickHouses();
+    this.tickMils();
+    this.tickFirestorms();
     this.checkGameOver();
+  }
+
+  // ── Firestorm ───────────────────────────────────────
+  firestorms: { x: number; y: number; until: number; acc: number }[] = [];
+
+  startFirestorm(x: number, y: number): void {
+    this.firestorms.push({ x, y, until: this.time + 8, acc: 0 });
+  }
+
+  private tickFirestorms(): void {
+    const t = this.time;
+    for (let i = this.firestorms.length - 1; i >= 0; i--) {
+      const fs = this.firestorms[i];
+      if (t >= fs.until) { this.firestorms.splice(i, 1); continue; }
+      fs.acc += SIM_DT;
+      const interval = 8 / 22;   // FIRESTORM_DURATION / METEORS
+      while (fs.acc >= interval) {
+        fs.acc -= interval;
+        const ang = this.rng.range(0, Math.PI * 2), r = Math.sqrt(this.rng.next()) * 8;
+        const mx = fs.x + Math.cos(ang) * r, my = fs.y + Math.sin(ang) * r;
+        this.bus.emit('meteor', { x: mx, y: my });
+        // 杀伤：单位 + 点燃房屋 + 军事建筑掉血 + 焦痕
+        for (const f of this.followers)
+          if ((f.x - mx) ** 2 + (f.y - my) ** 2 <= 1.4 * 1.4) f.hp -= 8;
+        const h = this.houseAt(Math.floor(mx), Math.floor(my));
+        if (h) { h.hp -= 12; if (h.fireUntil <= t) { h.fireUntil = t + 999; this.bus.emit('fireStart', { id: h.id, x: h.tx + 0.5, y: h.ty + 0.5 }); } }
+        const m = this.milAt(Math.floor(mx), Math.floor(my));
+        if (m) { m.hp -= 16; if (m.hp <= 0) this.destroyMil(m, 'firestorm'); }
+        const ti = Math.floor(my) * MAP + Math.floor(mx);
+        if (ti >= 0 && ti < MAP * MAP) this.world.scorched[ti] = 1;
+      }
+    }
+  }
+
+  // ── 军事建筑 tick：训练招募 + 守卫塔火力 + 环境毁伤 ──
+  private tickMils(): void {
+    const t = this.time;
+    const KIND_CLS: Record<string, FClass> = { barracks: FClass.Warrior, mageschool: FClass.FireMage, sanctum: FClass.Preacher };
+    for (const m of [...this.mils]) {
+      // 环境毁伤（与房屋同规则）
+      if (this.world.isWater(m.tx, m.ty)) { this.destroyMil(m, 'flood'); continue; }
+      if (this.world.isLava(m.tx, m.ty, t)) { this.destroyMil(m, 'lava'); continue; }
+      if (!this.tileStillFlat(m.tx, m.ty)) { this.destroyMil(m, 'terrain'); continue; }
+      if (m.hp <= 0) { this.destroyMil(m, 'razed'); continue; }
+
+      if (m.kind === 'tower') {
+        m.shotCd -= SIM_DT;
+        if (m.shotCd <= 0) {
+          // 最近敌单位（塔不打野人）
+          let best: Follower | null = null, bd = TOWER_RANGE * TOWER_RANGE;
+          this.nearbyFollowers(m.tx + 0.5, m.ty + 0.5, TOWER_RANGE, this.scratch);
+          for (const f of this.scratch) {
+            if (f.faction === m.faction || f.faction === WILD_FACTION || f.hp <= 0) continue;
+            const d = (f.x - m.tx - 0.5) ** 2 + (f.y - m.ty - 0.5) ** 2;
+            if (d < bd) { bd = d; best = f; }
+          }
+          // 也狙敌方神使
+          const ea = this.avatars[1 - m.faction];
+          if (!best && ea?.alive && (ea.x - m.tx - 0.5) ** 2 + (ea.y - m.ty - 0.5) ** 2 <= TOWER_RANGE * TOWER_RANGE && t >= ea.invulnUntil) {
+            ea.hp -= TOWER_DPS * TOWER_SHOT_CD;
+            this.bus.emit('fireShot', { fx: m.tx + 0.5, fy: m.ty + 0.5, tx: ea.x, ty: ea.y, tower: true });
+            m.shotCd = TOWER_SHOT_CD;
+          } else if (best) {
+            best.hp -= TOWER_DPS * TOWER_SHOT_CD;
+            this.bus.emit('fireShot', { fx: m.tx + 0.5, fy: m.ty + 0.5, tx: best.x, ty: best.y, tower: true });
+            m.shotCd = TOWER_SHOT_CD;
+          }
+        }
+        continue;
+      }
+
+      // 训练屋：招募闲置信徒
+      if (m.traineeId < 0) {
+        const cost = TRAIN_COST[KIND_CLS[m.kind]];
+        if (this.factions[m.faction].faith >= cost) {
+          this.nearbyFollowers(m.tx + 0.5, m.ty + 0.5, 8, this.scratch);
+          for (const f of this.scratch) {
+            if (f.faction !== m.faction || f.cls !== FClass.Brave || f.hp <= 0) continue;
+            if (f.state !== FState.Wander) continue;
+            this.factions[m.faction].faith -= cost;
+            f.state = FState.Train; f.trainId = m.id;
+            m.traineeId = f.id; m.trainT = 0;
+            break;
+          }
+        }
+      } else {
+        const f = this.followers.find(ff => ff.id === m.traineeId);
+        if (!f || f.hp <= 0 || f.state !== FState.Train) { m.traineeId = -1; m.trainT = 0; continue; }
+        // 学徒到位后计时
+        if ((f.x - m.tx - 0.5) ** 2 + (f.y - m.ty - 0.5) ** 2 < 1.2) {
+          m.trainT += SIM_DT;
+          if (m.trainT >= TRAIN_TIME) {
+            const cls = KIND_CLS[m.kind];
+            f.cls = cls; f.hp = CLASS_HP[cls];
+            f.state = FState.Wander; f.trainId = -1; f.wanderTimer = 0;
+            m.traineeId = -1; m.trainT = 0;
+            this.bus.emit('classTrained', { id: f.id, faction: f.faction, cls, x: f.x, y: f.y });
+          }
+        }
+      }
+    }
   }
 
   // ── 神使化身 ────────────────────────────────────────
@@ -261,20 +415,83 @@ export class Sim {
     for (const f of this.followers) {
       f.px = f.x; f.py = f.y;
       const tx = Math.floor(f.x), ty = Math.floor(f.y);
+      const maxHp = CLASS_HP[f.cls];
 
       // 环境伤害
       if (w.isWater(tx, ty)) f.hp -= 5 * SIM_DT;                    // 溺水
       if (w.isLava(tx, ty, t)) f.hp -= 12 * SIM_DT;                 // 岩浆
       const inSwamp = w.isSwamp(tx, ty, t);
       if (inSwamp && f.blessedUntil < t) f.hp -= SWAMP_DPS * SIM_DT;
-      if (f.blessedUntil > t) f.hp = Math.min(FOLLOWER_HP, f.hp + 1.5 * SIM_DT);
+      if (f.blessedUntil > t) f.hp = Math.min(maxHp, f.hp + 1.5 * SIM_DT);
       if (f.hp <= 0) { dead.push(f); continue; }
+      f.shotCd -= SIM_DT; f.preachCd -= SIM_DT;
 
-      // 战斗：找 1.1 tile 内敌人（进战斗前释放建地预约，防 reserved[] 孤儿泄漏）
-      if (f.state !== FState.Fight) {
+      // 野人：只漫游，不战斗不定居
+      if (f.faction === WILD_FACTION) {
+        f.wanderTimer -= SIM_DT;
+        if (f.wanderTimer <= 0) {
+          f.wanderTimer = this.rng.range(2, 5);
+          f.targetX = f.x + this.rng.range(-5, 5);
+          f.targetY = f.y + this.rng.range(-5, 5);
+        }
+        this.moveToward(f, f.targetX, f.targetY, t, inSwamp);
+        continue;
+      }
+
+      // 受训：走向训练屋并等待
+      if (f.state === FState.Train) {
+        const m = this.mils.find(mm => mm.id === f.trainId);
+        if (!m) { f.state = FState.Wander; f.trainId = -1; f.wanderTimer = 0; }
+        else {
+          if ((f.x - m.tx - 0.5) ** 2 + (f.y - m.ty - 0.5) ** 2 >= 1.0)
+            this.moveToward(f, m.tx + 0.5, m.ty + 0.5, t, inSwamp);
+          continue;
+        }
+      }
+
+      // 火法师：远程射击（不进近战）
+      if (f.cls === FClass.FireMage) {
+        let target: Follower | null = null, bd = FIREMAGE_RANGE * FIREMAGE_RANGE;
+        this.nearbyFollowers(f.x, f.y, FIREMAGE_RANGE, this.scratch);
+        for (const e of this.scratch) {
+          if (e.faction === f.faction || e.faction === WILD_FACTION || e.hp <= 0) continue;
+          const d = dist2(f, e);
+          if (d < bd) { bd = d; target = e; }
+        }
+        if (target) {
+          if (bd < 2.2 * 2.2) this.moveToward(f, f.x + (f.x - target.x), f.y + (f.y - target.y), t, inSwamp); // 拉开距离
+          else if (f.shotCd <= 0) {
+            f.shotCd = FIREMAGE_SHOT_CD;
+            target.hp -= FIREMAGE_DPS * FIREMAGE_SHOT_CD * (f.blessedUntil > t ? 1.4 : 1);
+            this.bus.emit('fireShot', { fx: f.x, fy: f.y, tx: target.x, ty: target.y, tower: false });
+          }
+          continue;
+        }
+      }
+
+      // 传教士：不战斗，布道转化敌方信徒（仅普通信徒）
+      if (f.cls === FClass.Preacher) {
+        if (f.preachCd <= 0) {
+          this.nearbyFollowers(f.x, f.y, PREACH_RANGE, this.scratch);
+          for (const e of this.scratch) {
+            if (e.faction === f.faction || e.faction === WILD_FACTION || e.cls !== FClass.Brave || e.hp <= 0) continue;
+            f.preachCd = PREACH_INTERVAL;
+            if (this.rng.chance(PREACH_CHANCE)) {
+              e.faction = f.faction;
+              e.state = FState.Wander; e.enemyId = -1; e.wanderTimer = 0;
+              this.releaseReservation(e);
+              this.bus.emit('convert', { x: e.x, y: e.y, toFaction: f.faction });
+            }
+            break;
+          }
+        }
+      }
+
+      // 战斗：找 1.1 tile 内敌人（传教士不主动；野人不是目标；进战斗前释放建地预约）
+      if (f.state !== FState.Fight && f.cls !== FClass.Preacher) {
         this.nearbyFollowers(f.x, f.y, 1.1, this.scratch);
         for (const e of this.scratch) {
-          if (e.faction !== f.faction && e.hp > 0) {
+          if (e.faction !== f.faction && e.faction !== WILD_FACTION && e.hp > 0) {
             this.releaseReservation(f);
             f.state = FState.Fight; f.enemyId = e.id; break;
           }
@@ -287,21 +504,28 @@ export class Sim {
         else {
           if (dist2(f, e) > 0.8) this.moveToward(f, e.x, e.y, t, inSwamp);
           else {
-            e.hp -= FOLLOWER_DPS * SIM_DT * (f.blessedUntil > t ? 1.5 : 1);
+            e.hp -= CLASS_DPS[f.cls] * SIM_DT * (f.blessedUntil > t ? 1.5 : 1);
             if (this.rng.chance(0.02)) this.bus.emit('combat', { x: f.x, y: f.y });
           }
           continue;
         }
       }
 
-      // 攻城：紧邻敌房则拆
+      // 攻城：紧邻敌方建筑则拆（房屋/军事建筑）
+      const razeDps = Math.max(CLASS_DPS[f.cls], FOLLOWER_DPS);
       const nearHouse = this.adjacentEnemyHouse(f);
       if (nearHouse) {
-        nearHouse.hp -= FOLLOWER_DPS * SIM_DT;
+        nearHouse.hp -= razeDps * SIM_DT;
         nearHouse.ejectTimer += SIM_DT;
         if (this.rng.chance(0.02)) this.bus.emit('combat', { x: f.x, y: f.y });
         if (nearHouse.hp <= 0) this.destroyHouse(nearHouse, 'razed');
         continue;
+      }
+      const nearMil = this.adjacentEnemyMil(f);
+      if (nearMil) {
+        nearMil.hp -= razeDps * SIM_DT;
+        if (this.rng.chance(0.02)) this.bus.emit('combat', { x: f.x, y: f.y });
+        continue; // 摧毁判定在 tickMils
       }
 
       if (f.state === FState.Build) {
@@ -332,11 +556,11 @@ export class Sim {
         continue;
       }
 
-      // Wander：周期性找定居点
+      // Wander：周期性找定居点（仅普通信徒定居建屋；军职随图腾/锚点游走）
       f.wanderTimer -= SIM_DT;
       if (f.wanderTimer <= 0) {
         f.wanderTimer = this.rng.range(0.8, 1.6);
-        const site = this.findSettleSite(f);
+        const site = f.cls === FClass.Brave ? this.findSettleSite(f) : null;
         if (site) {
           this.releaseReservation(f); // 兜底：覆盖旧目标前先释放（防任何遗漏路径的孤儿预约）
           f.buildX = site.tx; f.buildY = site.ty;
@@ -361,7 +585,7 @@ export class Sim {
       if (i >= 0) this.followers.splice(i, 1);
       this.releaseReservation(f);
       if (!(f as { settled?: boolean }).settled) {
-        this.factions[f.faction].lossesRecent += 1;
+        if (f.faction < 2) this.factions[f.faction].lossesRecent += 1;   // 野人无阵营统计
         this.bus.emit('entityDeath', { kind: 'follower', id: f.id, faction: f.faction, x: f.x, y: f.y, cause: 'combat' });
       }
     }
@@ -403,6 +627,13 @@ export class Sim {
     return null;
   }
 
+  private adjacentEnemyMil(f: Follower): MilBuilding | null {
+    const tx = Math.floor(f.x), ty = Math.floor(f.y);
+    for (const m of this.mils)
+      if (m.faction !== f.faction && Math.abs(m.tx - tx) <= 1 && Math.abs(m.ty - ty) <= 1) return m;
+    return null;
+  }
+
   private reservedByOther(f: Follower): boolean {
     const r = this.reserved[f.buildY * MAP + f.buildX];
     return r >= 0 && r !== f.id;
@@ -416,6 +647,10 @@ export class Sim {
   /** 定居点搜索：图腾 > 己方房屋群落边缘 > 出生地附近 */
   private findSettleSite(f: Follower): { tx: number; ty: number } | null {
     if (this.pop(f.faction) >= this.popCap(f.faction) + 6) return null;
+    // 帝国越大扩张欲望越低（对局曲线控制：防 3 分钟铺满地图）
+    let myHouses = 0;
+    for (const h of this.houses) if (h.faction === f.faction) myHouses++;
+    if (this.rng.next() < myHouses / (myHouses + 30)) return null;
     const t = this.time;
     const totem = this.totems.find(tt => tt.faction === f.faction);
     const anchors: { x: number; y: number }[] = [];
@@ -541,7 +776,8 @@ export class Sim {
   serialize(): SaveData {
     return {
       v: 1, time: this.time, world: this.world.serialize(),
-      followers: this.followers.map(f => [f.id, f.faction, +f.x.toFixed(2), +f.y.toFixed(2), +f.hp.toFixed(1), +f.blessedUntil.toFixed(1)] as const),
+      followers: this.followers.map(f => [f.id, f.faction, +f.x.toFixed(2), +f.y.toFixed(2), +f.hp.toFixed(1), +f.blessedUntil.toFixed(1), f.cls] as const),
+      mils: this.mils.map(m => [m.id, m.faction, m.kind, m.tx, m.ty, Math.round(m.hp)] as const),
       houses: this.houses.map(h => [h.id, h.faction, h.tx, h.ty, h.level, Math.round(h.hp), h.occupants, +h.buildProgress.toFixed(2), +h.fireUntil.toFixed(1), +h.blessedUntil.toFixed(1)] as const),
       totems: this.totems.map(tt => [tt.id, tt.faction, +tt.x.toFixed(1), +tt.y.toFixed(1), +tt.until.toFixed(1)] as const),
       avatars: this.avatars.map(a => [a.faction, +a.x.toFixed(2), +a.y.toFixed(2), +a.hp.toFixed(1), a.alive ? 1 : 0, +a.respawnAt.toFixed(1)] as const),
@@ -556,8 +792,12 @@ export class Sim {
     sim.time = d.time; sim.floodUntil = d.floodUntil; sim.nextId = d.nextId;
     sim.armageddonFired = d.armageddon; sim.rng.setState(d.rngState);
     sim.graceUntil = d.time + 3;
-    for (const [id, faction, x, y, hp, blessedUntil] of d.followers)
-      sim.followers.push({ id, faction, x, y, px: x, py: y, hp, state: FState.Wander, targetX: x, targetY: y, buildX: -1, buildY: -1, enemyId: -1, blessedUntil: blessedUntil ?? 0, wanderTimer: 0, stuck: 0 });
+    for (const [id, faction, x, y, hp, blessedUntil, cls] of d.followers)
+      sim.followers.push({ id, faction, cls: cls ?? FClass.Brave, x, y, px: x, py: y, hp, state: FState.Wander, targetX: x, targetY: y, buildX: -1, buildY: -1, enemyId: -1, blessedUntil: blessedUntil ?? 0, wanderTimer: 0, stuck: 0, shotCd: 0, preachCd: 0, trainId: -1 });
+    if (d.mils) for (const [id, faction, kind, tx, ty, hp] of d.mils) {
+      sim.mils.push({ id, faction, kind: kind as MilBuilding['kind'], tx, ty, hp, traineeId: -1, trainT: 0, shotCd: 0 });
+      sim.occupancy[ty * MAP + tx] = id;
+    }
     for (const [id, faction, tx, ty, level, hp, occupants, buildProgress, fireUntil, blessedUntil] of d.houses) {
       sim.houses.push({ id, faction, tx, ty, level, hp, occupants, buildProgress, spawnTimer: 0, upgradeTimer: 0, fireUntil: fireUntil ?? 0, blessedUntil: blessedUntil ?? 0, ejectTimer: 0 });
       sim.occupancy[ty * MAP + tx] = id;
@@ -582,7 +822,8 @@ export class Sim {
 export interface SaveData {
   v: number; time: number;
   world: WorldSave;
-  followers: (readonly [number, number, number, number, number, number?])[];
+  followers: (readonly [number, number, number, number, number, number?, number?])[];
+  mils?: (readonly [number, number, string, number, number, number])[];
   houses: (readonly [number, number, number, number, number, number, number, number, number?, number?])[];
   totems: (readonly [number, number, number, number, number])[];
   avatars?: (readonly [number, number, number, number, number, number])[];

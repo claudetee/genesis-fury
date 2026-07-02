@@ -76,8 +76,14 @@ export class Minimap {
       g.fillRect(h.tx - 1, h.ty - 1, 3, 3);
     }
     for (const f of this.sim.followers) {
-      g.fillStyle = f.faction === 0 ? '#c8f2ff' : '#ffc9c4';
+      g.fillStyle = f.faction === 0 ? '#c8f2ff' : f.faction === 1 ? '#ffc9c4' : '#b8ac90';
       g.fillRect(Math.floor(f.x), Math.floor(f.y), 1, 1);
+    }
+    for (const m of this.sim.mils) {
+      g.fillStyle = m.faction === 0 ? '#3fa8d8' : '#d84838';
+      g.fillRect(m.tx - 1, m.ty - 1, 3, 3);
+      g.strokeStyle = '#ffe8a0';
+      g.strokeRect(m.tx - 1.5, m.ty - 1.5, 4, 4);
     }
     for (const tt of this.sim.totems) {
       g.strokeStyle = tt.faction === 0 ? '#6fe3ff' : '#ff7a70';

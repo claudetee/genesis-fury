@@ -37,7 +37,7 @@ export const START_FOLLOWERS = 6;
 export const HOUSE_CAP = [2, 4, 7];
 export const HOUSE_FAITH_MULT = [1, 1.15, 1.3];
 export const HOUSE_HP = [30, 55, 90];
-export const HOUSE_SPAWN_S = [9, 7, 5.5];
+export const HOUSE_SPAWN_S = [13, 10, 8];
 export const HOUSE_BUILD_S = 4;      // 建造耗时
 export const FIRE_COLLAPSE_S = 6;
 export const FLAT_FOR_LV2 = 10;      // 5×5 内平地数 ≥ → 可升2级
@@ -51,14 +51,55 @@ export interface MiracleDef {
 export const MIRACLES: MiracleDef[] = [
   { id: 'raise',     name: '塑地·隆起', icon: 'raise',     cost: 8,   cooldown: 0,  radius: 2, hotkey: '1', desc: '抬升大地，为信徒开辟家园' },
   { id: 'lower',     name: '塑地·沉降', icon: 'lower',     cost: 8,   cooldown: 0,  radius: 2, hotkey: '2', desc: '沉降大地，或将敌土没入汪洋' },
-  { id: 'bless',     name: '圣光祝福', icon: 'bless',     cost: 45,  cooldown: 8,  radius: 4, hotkey: '3', desc: '治愈信徒，繁衍加倍，驱散沼泽' },
+  { id: 'bless',     name: '圣光祝福', icon: 'bless',     cost: 45,  cooldown: 8,  radius: 4, hotkey: '3', desc: '治愈信徒，繁衍加倍；感化中立的野人' },
   { id: 'lightning', name: '雷罚',     icon: 'lightning', cost: 60,  cooldown: 3,  radius: 1, hotkey: '4', desc: '天雷击落，点燃屋舍' },
   { id: 'swamp',     name: '沼泽',     icon: 'swamp',     cost: 70,  cooldown: 10, radius: 3, hotkey: '5', desc: '化地为泽，困住来犯之敌' },
   { id: 'quake',     name: '地震',     icon: 'quake',     cost: 120, cooldown: 20, radius: 6, hotkey: '6', desc: '大地震颤，屋舍崩塌' },
-  { id: 'flood',     name: '洪水',     icon: 'flood',     cost: 200, cooldown: 45, radius: 0, hotkey: '7', desc: '大洪水淹没低地，涤荡尘世' },
-  { id: 'volcano',   name: '火山',     icon: 'volcano',   cost: 260, cooldown: 60, radius: 5, hotkey: '8', desc: '召唤火山，焦土千里' },
-  { id: 'totem',     name: '集结图腾', icon: 'totem',     cost: 25,  cooldown: 0,  radius: 6, hotkey: '9', desc: '树立图腾，引导信徒汇聚' },
+  { id: 'firestorm', name: '陨星风暴', icon: 'firestorm', cost: 180, cooldown: 40, radius: 8, hotkey: '7', desc: '天火倾泻八秒，焚尽一方' },
+  { id: 'flood',     name: '洪水',     icon: 'flood',     cost: 200, cooldown: 45, radius: 0, hotkey: '8', desc: '大洪水淹没低地，涤荡尘世' },
+  { id: 'volcano',   name: '火山',     icon: 'volcano',   cost: 260, cooldown: 60, radius: 5, hotkey: '9', desc: '召唤火山，焦土千里' },
+  { id: 'teleport',  name: '神行',     icon: 'teleport',  cost: 50,  cooldown: 15, radius: 1, hotkey: '0', desc: '神使瞬行至大地任意一角' },
+  { id: 'totem',     name: '集结图腾', icon: 'totem',     cost: 25,  cooldown: 0,  radius: 6, hotkey: 't', desc: '树立图腾，引导信徒汇聚' },
 ];
+
+// ── 营造（建筑放置，与神迹同门不同栏）──────────────────
+export interface BuildDef { id: string; name: string; icon: string; cost: number; hotkey: string; desc: string }
+export const BUILDINGS: BuildDef[] = [
+  { id: 'barracks',   name: '武堂',   icon: 'barracks',   cost: 90,  hotkey: 'q', desc: '信徒入内受训为战士——皮糙肉厚的近卫' },
+  { id: 'mageschool', name: '火祭坛', icon: 'mageschool', cost: 110, hotkey: 'w', desc: '信徒入内受训为火法师——掷焰的远击手' },
+  { id: 'sanctum',    name: '圣所',   icon: 'sanctum',    cost: 100, hotkey: 'e', desc: '信徒入内受训为传教士——不战而屈人之兵' },
+  { id: 'tower',      name: '守卫塔', icon: 'tower',      cost: 70,  hotkey: 'r', desc: '自动喷吐圣焰，狙杀来犯之敌' },
+];
+
+// ── 职业 ──────────────────────────────────────────────
+// class: 0 信徒 / 1 战士 / 2 火法师 / 3 传教士
+export const CLASS_HP = [10, 26, 12, 10];
+export const CLASS_DPS = [1.2, 3.2, 0, 0];       // 火法师走远程投射
+export const CLASS_SPEED = [1.6, 1.5, 1.45, 1.5];
+export const TRAIN_COST = [0, 18, 26, 22];        // 每人转职耗信仰
+export const TRAIN_TIME = 6;                      // 训练时长 s
+export const FIREMAGE_RANGE = 6;
+export const FIREMAGE_DPS = 4;
+export const FIREMAGE_SHOT_CD = 1.6;
+export const PREACH_RANGE = 3;
+export const PREACH_INTERVAL = 5;                 // 每次转化判定间隔
+export const PREACH_CHANCE = 0.55;                // 每次判定成功率（仅对 class0 信徒）
+
+// ── 守卫塔 / 军事建筑 ─────────────────────────────────
+export const TOWER_HP = 130;
+export const TOWER_RANGE = 7;
+export const TOWER_DPS = 2.4;
+export const TOWER_SHOT_CD = 1.2;
+export const MIL_HP = 70;                          // 训练屋 HP
+
+// ── 野人 ──────────────────────────────────────────────
+export const WILDMEN_COUNT = 26;
+export const WILD_FACTION = 2;
+
+// ── Firestorm ────────────────────────────────────────
+export const FIRESTORM_DURATION = 8;
+export const FIRESTORM_METEORS = 22;
+export const FIRESTORM_METEOR_DMG = 8;
 export const BLESS_DURATION = 12;
 export const SWAMP_DURATION = 25;
 export const FLOOD_DURATION = 25;

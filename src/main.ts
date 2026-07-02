@@ -4,7 +4,7 @@
 import { SIM_DT, AUTOSAVE_S } from './core/const';
 import { EventBus } from './core/events';
 import { Sim } from './sim/sim';
-import { cast, canCast } from './sim/miracles';
+import { cast, canCast, placeBuilding, canBuild } from './sim/miracles';
 import { EnemyGod, Difficulty } from './sim/ai';
 import { loadAssets, AssetDb } from './assets/loader';
 import { Renderer } from './render/renderer';
@@ -204,6 +204,11 @@ class Game {
       } else this.hud?.toast('神使殒落，等待转生', 'warn');
       return;
     }
+    if (id.startsWith('b:')) {
+      const r = placeBuilding(this.sim, 0, id.slice(2), x, y);
+      if (r === 'ok') { this.audio.play('totem'); this.select(null); }
+      return;
+    }
     const r = cast(this.sim, 0, id, x, y);
     if (r === 'ok' && this.tutCtx) this.tutCtx.castCounts[id] = (this.tutCtx.castCounts[id] ?? 0) + 1;
   }
@@ -299,9 +304,12 @@ class Game {
     if (this.input && this.renderer) {
       const sel = this.state === 'playing' ? this.input.selected : null;
       if (sel && this.sim) {
-        const st = canCast(this.sim, 0, sel, this.input.hoverX, this.input.hoverY);
-        const cursorState = st === 'ok' || st === 'cooldown' || st === 'faith' || st === 'range' || st === 'dead' ? st : 'hidden';
-        this.renderer.fx.updateCursor(sel, this.input.hoverX, this.input.hoverY, cursorState, this.sim.avatar(0));
+        const st = sel.startsWith('b:')
+          ? canBuild(this.sim, 0, sel.slice(2), Math.floor(this.input.hoverX), Math.floor(this.input.hoverY))
+          : canCast(this.sim, 0, sel, this.input.hoverX, this.input.hoverY);
+        const cursorState = st === 'ok' || st === 'cooldown' || st === 'faith' || st === 'range' || st === 'dead' ? st : 'faith';
+        this.renderer.fx.updateCursor(sel, this.input.hoverX, this.input.hoverY,
+          st === 'invalid' ? 'faith' : cursorState, this.sim.avatar(0));
       } else this.renderer.fx.updateCursor(null, 0, 0, 'hidden');
     }
 

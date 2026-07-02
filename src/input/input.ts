@@ -2,7 +2,7 @@
 // 键盘（WASD/方向键平移、1-9 神迹热键、Esc、+/-）、
 // 触屏（单指拖动=平移、点按=施法、双指捏合=缩放）。
 // 拖拽即时跟手，松手带惯性；tap 与 drag 用 8px/220ms 阈值区分。
-import { CAM_EDGE_PX, CAM_KEY_SPEED, MIRACLES } from '../core/const';
+import { CAM_EDGE_PX, CAM_KEY_SPEED, MIRACLES, BUILDINGS } from '../core/const';
 import { Camera } from '../render/camera';
 
 export interface InputCallbacks {
@@ -156,8 +156,11 @@ export class InputManager {
       if (!this.enabled) { if (e.key === 'Escape') this.cb.onPause(); return; }
       if (e.key === 'Escape') { this.selected ? this.select(null) : this.cb.onPause(); }
       if (e.key === 'F3') { e.preventDefault(); this.cb.onToggleDebug(); }
-      const m = MIRACLES.find(mm => mm.hotkey === e.key);
+      const key = e.key.toLowerCase();
+      const m = MIRACLES.find(mm => mm.hotkey === key);
       if (m) this.select(this.selected === m.id ? null : m.id);
+      const b = BUILDINGS.find(bb => bb.hotkey === key);
+      if (b) this.select(this.selected === `b:${b.id}` ? null : `b:${b.id}`);
     });
     on(window, 'keyup', (e: KeyboardEvent) => this.keys.delete(e.key === ' ' ? ' ' : e.key.toLowerCase()));
     on(window, 'blur', () => { this.keys.clear(); this.dragging = false; this.brushHold = false; });

@@ -1,7 +1,8 @@
 // 神迹系统：验证（信仰/冷却/目标合法性）→ 执行 → 事件。玩家与 AI 共用同一入口，严格对称。
-import { MIRACLES, MiracleDef, BLESS_DURATION, SWAMP_DURATION, FLOOD_DURATION, TOTEM_DURATION, QUAKE_BUILDING_COLLAPSE, FOLLOWER_HP, ARMAGEDDON_S, CAST_RANGE } from '../core/const';
+import { MIRACLES, MiracleDef, BUILDINGS, BLESS_DURATION, SWAMP_DURATION, FLOOD_DURATION, TOTEM_DURATION, QUAKE_BUILDING_COLLAPSE, ARMAGEDDON_S, CAST_RANGE, CLASS_HP, WILD_FACTION } from '../core/const';
 import { MAP, H_MAX } from '../core/const';
 import { Sim } from './sim';
+import { FClass, FState } from './entities';
 
 export const miracleById = new Map<string, MiracleDef>(MIRACLES.map(m => [m.id, m]));
 
@@ -21,7 +22,7 @@ export function canCast(sim: Sim, faction: number, id: string, x: number, y: num
   // 神迹经由神使化身祈告：她殒落则失声，目标须在祈告半径内（洪水为全图仪式，只需在世）
   const av = sim.avatar(faction);
   if (!av.alive) return 'dead';
-  if (id !== 'flood') {
+  if (id !== 'flood' && id !== 'teleport') {   // teleport = 神行，无距离限制
     const dx = x - av.x, dy = y - av.y;
     if (dx * dx + dy * dy > CAST_RANGE * CAST_RANGE) return 'range';
   }
@@ -29,6 +30,35 @@ export function canCast(sim: Sim, faction: number, id: string, x: number, y: num
   if (fs.faith < miracleCost(sim, id)) return 'faith';
   if (id !== 'flood' && (x < 1 || y < 1 || x > MAP - 1 || y > MAP - 1)) return 'invalid';
   if (id === 'totem' && sim.world.isWater(Math.floor(x), Math.floor(y))) return 'invalid';
+  if (id === 'teleport' && !sim.world.isWalkable(Math.floor(x), Math.floor(y), sim.time)) return 'invalid';
+  return 'ok';
+}
+
+// ── 营造：建筑放置（与神迹同套验证逻辑）────────────────
+export const buildingById = new Map(BUILDINGS.map(b => [b.id, b]));
+
+export function canBuild(sim: Sim, faction: number, id: string, tx: number, ty: number): CastResult {
+  const def = buildingById.get(id);
+  if (!def) return 'invalid';
+  const av = sim.avatar(faction);
+  if (!av.alive) return 'dead';
+  const dx = tx + 0.5 - av.x, dy = ty + 0.5 - av.y;
+  if (dx * dx + dy * dy > CAST_RANGE * CAST_RANGE) return 'range';
+  if (sim.factions[faction].faith < def.cost) return 'faith';
+  if (!sim.world.isBuildable(tx, ty, sim.time)) return 'invalid';
+  if (sim.occupancy[ty * MAP + tx] >= 0 || sim.reserved[ty * MAP + tx] >= 0) return 'invalid';
+  return 'ok';
+}
+
+export function placeBuilding(sim: Sim, faction: number, id: string, x: number, y: number): CastResult {
+  const tx = Math.floor(x), ty = Math.floor(y);
+  const check = canBuild(sim, faction, id, tx, ty);
+  if (check !== 'ok') {
+    if (faction === 0) sim.bus.emit('miracleDenied', { id, reason: check as 'faith' | 'cooldown' | 'invalid' | 'range' | 'dead' });
+    return check;
+  }
+  sim.factions[faction].faith -= buildingById.get(id)!.cost;
+  sim.placeMil(faction, id as 'barracks' | 'mageschool' | 'sanctum' | 'tower', tx, ty);
   return 'ok';
 }
 
@@ -54,15 +84,36 @@ export function cast(sim: Sim, faction: number, id: string, x: number, y: number
 
     case 'bless': {
       w.clearSwamp(x, y, def.radius);
-      for (const f of sim.followers)
-        if (f.faction === faction && d2(f.x, f.y, x, y) <= def.radius ** 2) {
+      for (const f of sim.followers) {
+        if (d2(f.x, f.y, x, y) > def.radius ** 2) continue;
+        if (f.faction === faction) {
           f.blessedUntil = t + BLESS_DURATION;
-          f.hp = Math.min(FOLLOWER_HP, f.hp + 4);
+          f.hp = Math.min(CLASS_HP[f.cls], f.hp + 4);
+        } else if (f.faction === WILD_FACTION) {
+          // 感化野人：入我苍蓝/绯红门下
+          f.faction = faction;
+          f.cls = FClass.Brave;
+          f.state = FState.Wander; f.wanderTimer = 0;
+          sim.bus.emit('convert', { x: f.x, y: f.y, toFaction: faction });
         }
+      }
       for (const h of sim.houses)
         if (h.faction === faction && d2(h.tx + 0.5, h.ty + 0.5, x, y) <= def.radius ** 2)
           h.blessedUntil = t + BLESS_DURATION;
       sim.bus.emit('blessApplied', { x, y, r: def.radius });
+      break;
+    }
+
+    case 'firestorm':
+      sim.startFirestorm(x, y);
+      sim.bus.emit('quakeShake', { x, y, power: 0.5 });
+      break;
+
+    case 'teleport': {
+      const av = sim.avatar(faction);
+      sim.bus.emit('teleportFx', { fromX: av.x, fromY: av.y, toX: x, toY: y });
+      av.x = av.px = av.targetX = x;
+      av.y = av.py = av.targetY = y;
       break;
     }
 

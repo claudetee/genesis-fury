@@ -118,3 +118,45 @@
 - **后处理**:
   - `sprites/avatar_a.png` — grid-slice 2x1, magenta chroma-key + despill, trim, fit 220px
   - `sprites/avatar_b.png` — grid-slice 2x1, magenta chroma-key + despill, trim, fit 220px
+
+### doodads
+- **模型**: openai/gpt-5-image
+- **时间**: 2026-07-02T17:22:24.180Z
+- **Prompt**: Game asset sprite sheet on a FLAT SOLID MAGENTA (#FF00FF) chroma-key background — entire background one single uniform magenta, no gradient, no texture. A strict 3x3 grid of painterly fantasy nature doodad sprites, consistent 3/4 top-down isometric angle, consistent scale, lighting from top-left, each sprite fully inside its cell with margin. Row 1: a lush broadleaf oak tree; a tall dark pine tree; a swaying tropical palm tree. Row 2: a large mossy grey boulder; a cluster of three small rocks; a flowering pink bush. Row 3: a gnarled dead tree; a patch of tall golden reeds; two red-capped mushrooms. Rich saturated painterly colors, AAA game quality, no text.
+- **后处理**:
+  - `sprites/tree_oak.png` — grid-slice 3x3, chroma/flood key, trim, fit 140px
+  - `sprites/tree_pine.png` — grid-slice 3x3, chroma/flood key, trim, fit 140px
+  - `sprites/tree_palm.png` — grid-slice 3x3, chroma/flood key, trim, fit 140px
+  - `sprites/rock_big.png` — grid-slice 3x3, chroma/flood key, trim, fit 140px
+  - `sprites/rock_small.png` — grid-slice 3x3, chroma/flood key, trim, fit 140px
+  - `sprites/bush_flower.png` — grid-slice 3x3, chroma/flood key, trim, fit 140px
+  - `sprites/tree_dead.png` — grid-slice 3x3, chroma/flood key, trim, fit 140px
+  - `sprites/reeds.png` — grid-slice 3x3, chroma/flood key, trim, fit 140px
+  - `sprites/mushroom.png` — grid-slice 3x3, chroma/flood key, trim, fit 140px
+
+### buildings2
+- **模型**: openai/gpt-5.4-image-2
+- **时间**: 2026-07-02T17:25:30.957Z
+- **Prompt**: Game asset sprite sheet on a FLAT SOLID MAGENTA (#FF00FF) chroma-key background — entire background one single uniform magenta, no gradient. A strict 3x3 grid of painterly bronze-age military building sprites, consistent 3/4 top-down isometric angle, consistent scale, lighting from top-left, each fully inside its cell with margin. Row 1 (teal-blue faction, azure banners): a warrior training lodge with crossed swords sign and teal banner; a fire-mage academy with a burning brazier and teal roof; a small white marble sanctuary with a golden bell and teal trim. Row 2 (crimson faction): a dark warrior training lodge with crossed axes and red banner; a dark fire-mage academy with green flame brazier and red roof; a dark bone shrine with a red crystal. Row 3: a tall teal stone guard tower with a watch fire on top; a tall crimson dark guard tower with a skull totem on top; a primitive neutral grey wildman tent with bones. Rich saturated painterly colors, AAA quality, no text.
+- **后处理**:
+  - `sprites/barracks_a.png` — grid-slice 3x3, chroma/flood key, trim, fit 210px
+  - `sprites/mageschool_a.png` — grid-slice 3x3, chroma/flood key, trim, fit 210px
+  - `sprites/sanctum_a.png` — grid-slice 3x3, chroma/flood key, trim, fit 210px
+  - `sprites/barracks_b.png` — grid-slice 3x3, chroma/flood key, trim, fit 210px
+  - `sprites/mageschool_b.png` — grid-slice 3x3, chroma/flood key, trim, fit 210px
+  - `sprites/sanctum_b.png` — grid-slice 3x3, chroma/flood key, trim, fit 210px
+  - `sprites/tower_a.png` — grid-slice 3x3, chroma/flood key, trim, fit 210px
+  - `sprites/tower_b.png` — grid-slice 3x3, chroma/flood key, trim, fit 210px
+  - `sprites/wildtent.png` — grid-slice 3x3, chroma/flood key, trim, fit 210px
+
+### icons2
+- **模型**: openai/gpt-5.4-image-2
+- **时间**: 2026-07-02T17:28:11.435Z
+- **Prompt**: Painterly epic fantasy concept art, ancient mythic bronze-age civilization, warm golden-hour light, weathered stone, moss, soft volumetric atmosphere, rich color, AAA game production quality. Game UI icon sheet: a strict 3x2 grid of six square icons, each a glowing rune symbol carved into a round weathered stone medallion, consistent style with clear equal margins between cells, dark background between cells. Row 1: a meteor shower of three falling burning stars; a swirling teleport portal spiral; crossed swords. Row 2: a fireball in an open palm; a white chapel bell with light rays; a stone watchtower. No text, no numbers.
+- **后处理**:
+  - `icons/firestorm.png` — grid-slice 3x2, inset, circle mask, 160px
+  - `icons/teleport.png` — grid-slice 3x2, inset, circle mask, 160px
+  - `icons/barracks.png` — grid-slice 3x2, inset, circle mask, 160px
+  - `icons/mageschool.png` — grid-slice 3x2, inset, circle mask, 160px
+  - `icons/sanctum.png` — grid-slice 3x2, inset, circle mask, 160px
+  - `icons/tower.png` — grid-slice 3x2, inset, circle mask, 160px

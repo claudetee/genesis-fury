@@ -1,6 +1,6 @@
 // HUD：信仰条 / 神迹栏（费用·冷却·热键·选中态）/ 计时 / toast / 调试面板。
 // 纯 DOM，读取 sim 状态每帧刷新；交互回调交给 Game 编排。
-import { MIRACLES, ARMAGEDDON_S } from '../core/const';
+import { MIRACLES, BUILDINGS, ARMAGEDDON_S } from '../core/const';
 import { Sim } from '../sim/sim';
 import { miracleCost } from '../sim/miracles';
 import { AssetDb } from '../assets/loader';
@@ -28,21 +28,27 @@ export class Hud {
     this.sim = sim; this.cb = cb;
     $('faith-emblem').setAttribute('src', assets.uiUrl('emblem'));
 
-    // 神迹栏
+    // 神迹栏 + 营造栏（分隔符隔开）
     const bar = $('miracle-bar');
     bar.innerHTML = '';
-    for (const m of MIRACLES) {
+    const mkSlot = (id: string, icon: string, name: string, hotkey: string, cost: number, build: boolean) => {
       const b = document.createElement('button');
-      b.className = 'miracle-slot';
-      b.innerHTML = `<img src="${assets.iconUrl(m.icon)}" alt="${m.name}" draggable="false">
+      b.className = 'miracle-slot' + (build ? ' build-slot' : '');
+      b.innerHTML = `<img src="${assets.iconUrl(icon)}" alt="${name}" draggable="false">
         <span class="cd" style="--cd:0"></span><span class="cd-num"></span>
-        <span class="hotkey">${m.hotkey}</span><span class="cost">${m.cost}</span>`;
-      b.addEventListener('click', () => { this.cb.onSelect(this.selected === m.id ? null : m.id); });
-      b.addEventListener('mouseenter', () => { this.showTip(m.id); this.cb.onHover(); });
+        <span class="hotkey">${hotkey.toUpperCase()}</span><span class="cost">${cost}</span>`;
+      const selId = build ? `b:${id}` : id;
+      b.addEventListener('click', () => { this.cb.onSelect(this.selected === selId ? null : selId); });
+      b.addEventListener('mouseenter', () => { this.showTip(selId); this.cb.onHover(); });
       b.addEventListener('mouseleave', () => this.hideTip());
       bar.appendChild(b);
-      this.slots.set(m.id, b);
-    }
+      this.slots.set(selId, b);
+    };
+    for (const m of MIRACLES) mkSlot(m.id, m.icon, m.name, m.hotkey, m.cost, false);
+    const div = document.createElement('span');
+    div.className = 'bar-divider';
+    bar.appendChild(div);
+    for (const bd of BUILDINGS) mkSlot(bd.id, bd.icon, bd.name, bd.hotkey, bd.cost, true);
 
     // ⚠️ 这些按钮是持久 DOM，Hud 每局重建 —— 必须用 onclick 赋值（幂等）而非 addEventListener（跨局累积）
     $('btn-pause').onclick = () => this.cb.onPause();
@@ -70,10 +76,17 @@ export class Hud {
   }
 
   private showTip(id: string): void {
-    const m = MIRACLES.find(mm => mm.id === id)!;
-    $('tip-name').textContent = m.name;
-    $('tip-cost').textContent = `❖ ${miracleCost(this.sim, id)} 信仰${m.cooldown ? ` · 冷却 ${m.cooldown}s` : ''}`;
-    $('tip-desc').textContent = m.desc;
+    if (id.startsWith('b:')) {
+      const b = BUILDINGS.find(bb => bb.id === id.slice(2))!;
+      $('tip-name').textContent = b.name;
+      $('tip-cost').textContent = `❖ ${b.cost} 信仰 · 营造`;
+      $('tip-desc').textContent = b.desc;
+    } else {
+      const m = MIRACLES.find(mm => mm.id === id)!;
+      $('tip-name').textContent = m.name;
+      $('tip-cost').textContent = `❖ ${miracleCost(this.sim, id)} 信仰${m.cooldown ? ` · 冷却 ${m.cooldown}s` : ''}`;
+      $('tip-desc').textContent = m.desc;
+    }
     $('miracle-tip').classList.remove('hidden');
   }
   private hideTip(): void {
@@ -150,6 +163,11 @@ export class Hud {
         cdEl.style.setProperty('--cd', String(Math.min(1, left / m.cooldown)));
         cdNum.textContent = left > 0.9 ? String(Math.ceil(left)) : '';
       } else { cdEl.style.setProperty('--cd', '0'); cdNum.textContent = ''; }
+    }
+    // 营造槽状态
+    for (const b of BUILDINGS) {
+      const slot = this.slots.get(`b:${b.id}`)!;
+      slot.classList.toggle('insufficient', fs.faith < b.cost);
     }
 
     // 调试

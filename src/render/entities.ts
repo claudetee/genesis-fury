@@ -7,7 +7,11 @@ import { AssetDb } from '../assets/loader';
 import { isoX } from './camera';
 
 const FACTION_TINT = [0x9fe8ff, 0xffb3ad];
-const texCache: { follower?: any[]; flame?: any; ring?: any } = {};
+const texCache: { follower?: Map<number, any>; flame?: any; ring?: any } = {};
+const MIL_SPRITE: Record<string, [string, string]> = {
+  barracks: ['barracks_a', 'barracks_b'], mageschool: ['mageschool_a', 'mageschool_b'],
+  sanctum: ['sanctum_a', 'sanctum_b'], tower: ['tower_a', 'tower_b'],
+};
 
 export class EntityRenderer {
   container: any;
@@ -17,9 +21,9 @@ export class EntityRenderer {
   private houseViews = new Map<number, any>();
   private totemViews = new Map<number, any>();
   private avatarViews = new Map<number, any>();
-  private followerTex: any[];
   private flameTex: any;
   private ringTex: any;
+  private milViews = new Map<number, any>();
   private heightAt: (x: number, y: number) => number;
 
   constructor(sim: Sim, assets: AssetDb, heightAt: (x: number, y: number) => number) {
@@ -28,13 +32,20 @@ export class EntityRenderer {
     this.container.sortableChildren = true;
     // 程序化纹理跨局缓存（重复开局不再向 PIXI Cache 泄漏新纹理）
     if (!texCache.follower) {
-      texCache.follower = [makeFollowerTexture(0), makeFollowerTexture(1)];
+      texCache.follower = new Map();
       texCache.flame = makeFlameTexture();
       texCache.ring = makeRingTexture();
     }
-    this.followerTex = texCache.follower;
     this.flameTex = texCache.flame;
     this.ringTex = texCache.ring;
+  }
+
+  /** 职业×阵营贴图（惰性生成，跨局缓存）。野人=faction2 */
+  private followerTexFor(faction: number, cls: number): any {
+    const key = faction * 10 + cls;
+    let tex = texCache.follower!.get(key);
+    if (!tex) { tex = makeFollowerTexture(faction, cls); texCache.follower!.set(key, tex); }
+    return tex;
   }
 
   sync(alpha: number, time: number): void {
@@ -73,16 +84,23 @@ export class EntityRenderer {
       spr.tint = a.invulnUntil > time ? 0xbfffd0 : hurt && Math.sin(time * 12) > 0 ? 0xffb0a0 : 0xffffff;
       spr.alpha = a.invulnUntil > time ? 0.65 + Math.sin(time * 10) * 0.2 : 1;
     }
-    // ── 信徒 ──
+    // ── 信徒（含职业/野人）──
     const liveF = new Set<number>();
     for (const f of sim.followers) {
       liveF.add(f.id);
       let v = this.followerViews.get(f.id);
       if (!v) {
-        v = new PIXI.Sprite(this.followerTex[f.faction]);
+        v = new PIXI.Sprite(this.followerTexFor(f.faction, f.cls));
         v.anchor.set(0.5, 0.92);
+        (v as { _key?: number })._key = f.faction * 10 + f.cls;
         this.followerViews.set(f.id, v);
         this.container.addChild(v);
+      }
+      // 转职/转阵营 → 换贴图
+      const key = f.faction * 10 + f.cls;
+      if ((v as { _key: number })._key !== key) {
+        v.texture = this.followerTexFor(f.faction, f.cls);
+        (v as { _key: number })._key = key;
       }
       const x = f.px + (f.x - f.px) * alpha, y = f.py + (f.y - f.py) * alpha;
       const h = this.heightAt(x, y);
@@ -150,6 +168,38 @@ export class EntityRenderer {
     }
     for (const [id, v] of this.houseViews) if (!liveH.has(id)) { v.destroy({ children: true }); this.houseViews.delete(id); }
 
+    // ── 军事建筑 ──
+    const liveM = new Set<number>();
+    for (const m of sim.mils) {
+      liveM.add(m.id);
+      let v = this.milViews.get(m.id);
+      if (!v) {
+        v = new PIXI.Container();
+        const key = MIL_SPRITE[m.kind][m.faction === 0 ? 0 : 1];
+        const spr = new PIXI.Sprite(PIXI.Texture.from(this.assets.sprites[key] as HTMLCanvasElement | HTMLImageElement));
+        spr.anchor.set(0.5, 0.88);
+        spr.scale.set(0);   // 落成动画
+        v.addChild(spr);
+        (v as { _spr?: unknown })._spr = spr;
+        (v as { _born?: number })._born = time;
+        this.milViews.set(m.id, v);
+        this.container.addChild(v);
+      }
+      const spr = (v as { _spr: any })._spr;
+      const born = (v as { _born: number })._born;
+      const p = Math.min(1, (time - born) / 0.6);
+      const baseScale = (m.kind === 'tower' ? 0.6 : 0.66);
+      spr.scale.set(backOut(p) * baseScale);
+      const gh = this.heightAt(m.tx + 0.5, m.ty + 0.5);
+      v.x = isoX(m.tx + 0.5, m.ty + 0.5);
+      v.y = (m.tx + 0.5 + m.ty + 0.5) * (TILE_H / 2) - gh * 14;
+      v.zIndex = v.y;
+      // 训练中：金光脉动
+      spr.tint = m.traineeId >= 0 ? (Math.sin(time * 5) > 0 ? 0xffe8b0 : 0xffffff) : 0xffffff;
+      spr.alpha = m.hp < 30 ? 0.6 + Math.sin(time * 9) * 0.15 : 1;
+    }
+    for (const [id, v] of this.milViews) if (!liveM.has(id)) { v.destroy({ children: true }); this.milViews.delete(id); }
+
     // ── 图腾 ──
     const liveT = new Set<number>();
     for (const t of sim.totems) {
@@ -187,22 +237,60 @@ export class EntityRenderer {
 
 function backOut(t: number): number { const s = 1.4; const u = t - 1; return u * u * ((s + 1) * u + s) + 1; }
 
-function makeFollowerTexture(faction: number): any {
+// 职业变体贴图：0信徒 1战士 2火法师 3传教士；faction 2 = 中立野人（灰褐）
+function makeFollowerTexture(faction: number, cls = 0): any {
   const c = document.createElement('canvas');
-  c.width = 22; c.height = 30;
+  c.width = 24; c.height = 34;
   const g = c.getContext('2d')!;
+  const cx = 12, base = 30;
   g.fillStyle = 'rgba(0,0,0,0.3)';
-  g.beginPath(); g.ellipse(11, 27, 7, 2.6, 0, 0, Math.PI * 2); g.fill();
-  const robe = faction === 0 ? '#3f8fa8' : '#a83f46';
-  const robeD = faction === 0 ? '#2c6579' : '#7a2c32';
-  const grad = g.createLinearGradient(0, 8, 0, 27);
+  g.beginPath(); g.ellipse(cx, base + 1, 7, 2.6, 0, 0, Math.PI * 2); g.fill();
+  const wild = faction === 2;
+  let robe = wild ? '#7a6a52' : faction === 0 ? '#3f8fa8' : '#a83f46';
+  let robeD = wild ? '#5a4c3a' : faction === 0 ? '#2c6579' : '#7a2c32';
+  if (cls === 2) { robe = faction === 0 ? '#2f6f9e' : '#8e3a20'; robeD = faction === 0 ? '#1c4a70' : '#5e2412'; }
+  if (cls === 3) { robe = '#e8e2d2'; robeD = '#bcb49e'; }
+  const grad = g.createLinearGradient(0, 10, 0, base);
   grad.addColorStop(0, robe); grad.addColorStop(1, robeD);
   g.fillStyle = grad;
-  g.beginPath(); g.moveTo(11, 8); g.quadraticCurveTo(19, 14, 16.5, 26); g.lineTo(5.5, 26); g.quadraticCurveTo(3, 14, 11, 8); g.fill();
+  const wide = cls === 1 ? 2 : 0;   // 战士更壮
+  g.beginPath(); g.moveTo(cx, 10); g.quadraticCurveTo(cx + 8 + wide, 16, cx + 5.5 + wide, base); g.lineTo(cx - 5.5 - wide, base); g.quadraticCurveTo(cx - 8 - wide, 16, cx, 10); g.fill();
+  // 头
   g.fillStyle = '#e8c49a';
-  g.beginPath(); g.arc(11, 6.5, 4.4, 0, Math.PI * 2); g.fill();
-  g.fillStyle = faction === 0 ? '#dff3f8' : '#f8dfe0';
-  g.beginPath(); g.arc(11, 4, 3.2, Math.PI, 0); g.fill(); // 头巾
+  g.beginPath(); g.arc(cx, 8.5, 4.4, 0, Math.PI * 2); g.fill();
+  if (cls === 1) {
+    // 战士：金属盔 + 肩甲 + 剑
+    g.fillStyle = faction === 0 ? '#b8c8d8' : '#8a8078';
+    g.beginPath(); g.arc(cx, 6.5, 4.6, Math.PI, 0); g.fill();
+    g.fillRect(cx - 8 - wide, 13, 5, 4); g.fillRect(cx + 3 + wide, 13, 5, 4);
+    g.strokeStyle = '#d8dce2'; g.lineWidth = 1.8;
+    g.beginPath(); g.moveTo(cx + 8, 24); g.lineTo(cx + 12, 10); g.stroke();
+    g.fillStyle = '#7a5a2a'; g.fillRect(cx + 7, 23, 3, 3);
+  } else if (cls === 2) {
+    // 火法师：兜帽 + 火杖
+    g.fillStyle = robeD;
+    g.beginPath(); g.arc(cx, 6, 4.8, Math.PI * 0.9, Math.PI * 0.1); g.fill();
+    g.strokeStyle = '#6b4a2f'; g.lineWidth = 1.6;
+    g.beginPath(); g.moveTo(cx - 9, 27); g.lineTo(cx - 11, 6); g.stroke();
+    g.fillStyle = '#ff9440';
+    g.shadowColor = '#ff7020'; g.shadowBlur = 6;
+    g.beginPath(); g.arc(cx - 11, 4.5, 2.8, 0, Math.PI * 2); g.fill();
+    g.shadowBlur = 0;
+  } else if (cls === 3) {
+    // 传教士：白袍金环
+    g.strokeStyle = '#d8b84a'; g.lineWidth = 1.4;
+    g.beginPath(); g.arc(cx, 3.5, 3.4, 0, Math.PI * 2); g.stroke();
+    g.fillStyle = '#f6f0e0';
+    g.beginPath(); g.arc(cx, 5.5, 3.4, Math.PI, 0); g.fill();
+  } else if (wild) {
+    // 野人：乱发 + 骨饰
+    g.fillStyle = '#4a3a28';
+    g.beginPath(); g.arc(cx, 5.5, 4.2, Math.PI * 0.85, Math.PI * 0.15); g.fill();
+    g.fillStyle = '#e8e0d0'; g.fillRect(cx - 3, 15, 6, 1.6);
+  } else {
+    g.fillStyle = faction === 0 ? '#dff3f8' : '#f8dfe0';
+    g.beginPath(); g.arc(cx, 6, 3.2, Math.PI, 0); g.fill(); // 头巾
+  }
   return PIXI.Texture.from(c);
 }
 

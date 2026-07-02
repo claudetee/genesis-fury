@@ -298,6 +298,13 @@ button { font-family: inherit; cursor: pointer; border: none; background: none; 
   font-size: 17px; color: #cfe3ea; text-shadow: 0 1px 3px #000;
   pointer-events: none;
 }
+.bar-divider {
+  align-self: stretch; width: 2px; margin: 4px 5px;
+  background: linear-gradient(180deg, transparent, #6a5a30 30%, #6a5a30 70%, transparent);
+}
+.build-slot { border-radius: 12px; }
+.build-slot img { border-radius: 10px; }
+.build-slot.selected { border-color: #7ad6a0; box-shadow: 0 0 16px rgba(122,214,160,.7), inset 0 0 10px rgba(122,214,160,.3); }
 @keyframes slotDeny { 0%,100% { transform: translateX(0) } 25% { transform: translateX(-4px) } 75% { transform: translateX(4px) } }
 .miracle-slot.deny { animation: slotDeny .28s ease; border-color: #c0503a; }
 

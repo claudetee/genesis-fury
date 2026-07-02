@@ -99,6 +99,53 @@ export class FxRenderer {
       this.flashScreen(e.faction === 0 ? 0.45 : 0.25, e.faction === 0 ? 0x304860 : 0x602830);
     });
     bus.on('avatarRespawn', (e) => this.blessFx(e.x, e.y, 2));
+    bus.on('fireShot', (e) => this.launchProjectile(e.fx, e.fy, e.tx, e.ty, e.tower));
+    bus.on('meteor', (e) => this.meteorStrike(e.x, e.y));
+    bus.on('teleportFx', (e) => {
+      this.spawn(e.fromX, e.fromY, { n: 14, speed: [10, 50], up: [40, 120], grav: -80, life: [0.4, 0.8], s0: 0.3, s1: 0, tint: 0xa8e0ff, blend: 'add', tex: this.sparkTex });
+      this.blessFx(e.toX, e.toY, 1.2);
+    });
+    bus.on('convert', (e) => {
+      this.spawn(e.x, e.y, { n: 12, speed: [8, 40], up: [30, 90], grav: -40, life: [0.6, 1.1], s0: 0.24, s1: 0, tint: e.toFaction === 0 ? 0x9fe8ff : 0xffb0a8, blend: 'add', tex: this.sparkTex });
+    });
+    bus.on('classTrained', (e) => this.upgradeFx(e.x, e.y));
+  }
+
+  // ── 火球投射物（法师/塔）──────────────────────────
+  private projectiles: { spr: any; x0: number; y0: number; x1: number; y1: number; t: number; dur: number }[] = [];
+  private launchProjectile(fx: number, fy: number, tx: number, ty: number, tower: boolean): void {
+    const h0 = this.heightAt(fx, fy), h1 = this.heightAt(tx, ty);
+    const spr = new PIXI.Sprite(this.sparkTex);
+    spr.anchor.set(0.5);
+    spr.blendMode = 'add';
+    spr.tint = tower ? 0xffd060 : 0xff8030;
+    spr.scale.set(tower ? 0.9 : 0.7);
+    this.world.addChild(spr);
+    this.projectiles.push({
+      spr,
+      x0: isoX(fx, fy), y0: (fx + fy) * (TILE_H / 2) - h0 * H_STEP - (tower ? 46 : 14),
+      x1: isoX(tx, ty), y1: (tx + ty) * (TILE_H / 2) - h1 * H_STEP - 8,
+      t: 0, dur: 0.22,
+    });
+  }
+
+  private meteorStrike(x: number, y: number): void {
+    const h = this.heightAt(x, y);
+    const gx = isoX(x, y), gy = (x + y) * (TILE_H / 2) - h * H_STEP;
+    // 坠落流星：从高空斜落
+    const spr = new PIXI.Sprite(this.softTex);
+    spr.anchor.set(0.5);
+    spr.blendMode = 'add';
+    spr.tint = 0xffa040;
+    spr.scale.set(1.2);
+    this.world.addChild(spr);
+    this.projectiles.push({ spr, x0: gx + 180, y0: gy - 560, x1: gx, y1: gy, t: 0, dur: 0.5 });
+    // 撞击延迟爆炸（与 dur 同步）
+    setTimeout(() => {
+      this.spawn(x, y, { n: 14, speed: [50, 170], up: [40, 150], life: [0.3, 0.7], s0: 0.4, s1: 0, tint: 0xffb050, blend: 'add', tex: this.sparkTex });
+      this.spawn(x, y, { n: 8, speed: [20, 70], up: [20, 70], grav: -30, life: [0.8, 1.6], s0: 0.7, s1: 1.6, tint: 0x584838, tex: this.smokeTex });
+    }, 480);
+    this.flashScreen(0.08, 0xffb070);
   }
 
   /** 移动令落点标记：双圈涟漪 */
@@ -144,6 +191,28 @@ export class FxRenderer {
       p.spr.visible = true;
       p.spr.position.set(p.x, p.y);
       p.spr.zIndex = p.y;
+    }
+  }
+
+  /** 世界像素坐标直发火花（投射物命中点） */
+  private spawnAtWorld(px: number, py: number, n: number, tint: number): void {
+    for (let i = 0; i < Math.max(1, Math.round(n * this.quality)); i++) {
+      const p = this.free.pop();
+      if (!p) return;
+      p.alive = true;
+      const a = Math.random() * Math.PI * 2;
+      p.x = px; p.y = py;
+      p.vx = Math.cos(a) * (30 + Math.random() * 60);
+      p.vy = Math.sin(a) * 25 - 40;
+      p.grav = 180;
+      p.maxLife = p.life = 0.25 + Math.random() * 0.2;
+      p.s0 = 0.22; p.s1 = 0; p.spin = 0;
+      p.spr.texture = this.sparkTex;
+      p.spr.tint = tint;
+      p.spr.blendMode = 'add';
+      p.spr.visible = true;
+      p.spr.position.set(px, py);
+      p.spr.zIndex = py;
     }
   }
 
@@ -243,10 +312,11 @@ export class FxRenderer {
     const g = this.cursor;
     g.clear();
     if (!sel || state === 'hidden') return;
-    const def = MIRACLES.find(m => m.id === sel);
-    if (!def) return;
-    // 祈告半径大环（跟随神使）
-    if (avatar?.alive && sel !== 'flood') {
+    const isBuild = sel.startsWith('b:');
+    const def = isBuild ? null : MIRACLES.find(m => m.id === sel);
+    if (!isBuild && !def) return;
+    // 祈告半径大环（跟随神使；神行无限距不画）
+    if (avatar?.alive && sel !== 'flood' && sel !== 'teleport') {
       const pts2: [number, number][] = [];
       for (let i = 0; i <= 64; i++) {
         const a2 = (i / 64) * Math.PI * 2;
@@ -259,7 +329,24 @@ export class FxRenderer {
       g.stroke({ width: 1.5, color: state === 'range' ? 0xff6050 : 0x8fd8e8, alpha: 0.35 });
     }
     const color = state === 'ok' ? 0xffd870 : state === 'cooldown' ? 0x8fa8c0 : 0xff6050;
-    const r = Math.max(0.8, def.radius);
+    if (isBuild) {
+      // 营造：单格地基高亮（菱形描边 + 半透明填充）
+      const tx = Math.floor(hx), ty = Math.floor(hy);
+      const cs: [number, number][] = [[tx, ty], [tx + 1, ty], [tx + 1, ty + 1], [tx, ty + 1]];
+      const pts3 = cs.map(([gx2, gy2]) => {
+        const hh = this.heightAt(gx2, gy2);
+        return [isoX(gx2, gy2), (gx2 + gy2) * (TILE_H / 2) - hh * H_STEP] as [number, number];
+      });
+      g.moveTo(pts3[0][0], pts3[0][1]);
+      for (const [px, py] of pts3.slice(1)) g.lineTo(px, py);
+      g.closePath();
+      g.fill({ color, alpha: 0.18 });
+      g.stroke({ width: 2.5, color, alpha: 0.95 });
+      g.zIndex = pts3[0][1] + 400;
+      g.alpha = 0.8 + Math.sin(performance.now() / 200) * 0.2;
+      return;
+    }
+    const r = Math.max(0.8, def!.radius);
     const pts: [number, number][] = [];
     for (let i = 0; i <= 40; i++) {
       const a = (i / 40) * Math.PI * 2;
@@ -300,6 +387,21 @@ export class FxRenderer {
       l.life -= dt;
       l.g.alpha = Math.max(0, l.life / 0.28);
       if (l.life <= 0) { l.g.destroy(); this.lightnings.splice(i, 1); }
+    }
+    // 投射物（火球/流星，二次曲线弧线）
+    for (let i = this.projectiles.length - 1; i >= 0; i--) {
+      const p = this.projectiles[i];
+      p.t += dt;
+      const t = Math.min(1, p.t / p.dur);
+      const arc = Math.sin(t * Math.PI) * 26;
+      p.spr.x = p.x0 + (p.x1 - p.x0) * t;
+      p.spr.y = p.y0 + (p.y1 - p.y0) * t - arc;
+      p.spr.zIndex = p.spr.y + 600;
+      p.spr.alpha = 1 - t * 0.25;
+      if (t >= 1) {
+        this.spawnAtWorld(p.x1, p.y1, 4, 0xffc060);
+        p.spr.destroy(); this.projectiles.splice(i, 1);
+      }
     }
     // 移动标记涟漪
     for (let i = this.markers.length - 1; i >= 0; i--) {

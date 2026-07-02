@@ -7,8 +7,13 @@ export interface GameEvents {
   avatarRespawn: { faction: number; x: number; y: number };
   terrainChanged: { x0: number; y0: number; x1: number; y1: number };
   waterChanged: { level: number };
-  entitySpawn: { kind: 'follower' | 'house' | 'totem'; id: number; faction: number; x: number; y: number };
-  entityDeath: { kind: 'follower' | 'house' | 'totem'; id: number; faction: number; x: number; y: number; cause: string };
+  entitySpawn: { kind: 'follower' | 'house' | 'totem' | 'mil'; id: number; faction: number; x: number; y: number };
+  entityDeath: { kind: 'follower' | 'house' | 'totem' | 'mil'; id: number; faction: number; x: number; y: number; cause: string };
+  classTrained: { id: number; faction: number; cls: number; x: number; y: number };
+  convert: { x: number; y: number; toFaction: number };       // 传教/感化转阵营
+  fireShot: { fx: number; fy: number; tx: number; ty: number; tower: boolean };  // 火球（法师/塔）
+  meteor: { x: number; y: number };                            // 陨星落点
+  teleportFx: { fromX: number; fromY: number; toX: number; toY: number };
   houseUpgrade: { id: number; level: number; x: number; y: number };
   fireStart: { id: number; x: number; y: number };
   combat: { x: number; y: number };

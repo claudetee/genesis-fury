@@ -4,6 +4,7 @@ import { EventBus } from '../core/events';
 
 type SfxName =
   | 'raise' | 'lower' | 'bless' | 'lightning' | 'swamp' | 'quake' | 'flood' | 'volcano' | 'totem'
+  | 'firestorm' | 'teleport'
   | 'uiClick' | 'uiHover' | 'denied' | 'birth' | 'death' | 'collapse' | 'upgrade' | 'victory' | 'defeat';
 
 const PENTA = [220, 246.9, 293.7, 329.6, 392, 440, 493.9, 587.3];         // A 五声
@@ -230,6 +231,8 @@ export class AudioEngine {
       case 'flood': noise(2.4, 'lowpass', 700, 200, 0.5); tone('sine', 90, 45, 2, 0.25); break;
       case 'volcano': tone('sine', 45, 22, 2.6, 0.8); noise(2.6, 'lowpass', 400, 60, 0.7); noise(1.4, 'bandpass', 1800, 500, 0.3, t + 0.2); break;
       case 'totem': tone('square', 190, 150, 0.12, 0.2); tone('sine', 520, 520, 0.5, 0.12, t + 0.1); break;
+      case 'firestorm': noise(2.2, 'bandpass', 2200, 400, 0.4); tone('sine', 60, 34, 2.2, 0.4); break;
+      case 'teleport': tone('sine', 340, 1240, 0.35, 0.18); tone('sine', 1240, 340, 0.35, 0.14, t + 0.3); noise(0.5, 'highpass', 4000, 7000, 0.08); break;
       case 'uiClick': tone('square', 660, 520, 0.05, 0.1); break;
       case 'uiHover': tone('sine', 880, 880, 0.04, 0.05); break;
       case 'denied': tone('square', 160, 110, 0.18, 0.2); break;
