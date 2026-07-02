@@ -435,7 +435,8 @@ export class Sim {
     if (i < 0) return;
     this.houses.splice(i, 1);
     this.occupancy[h.ty * MAP + h.tx] = -1;
-    // 一半居民逃生
+    // 一半居民逃生。注意：本方法可能在 tickFollowers 的 for-of 中被调用，
+    // 新幸存者会被当前迭代器访问到——无害（当 tick 只做环境判定/漫步），但改迭代语义前须知
     const survivors = cause === 'flood' || cause === 'lava' ? 0 : Math.floor(h.occupants / 2);
     for (let s = 0; s < survivors; s++)
       this.spawnFollower(h.faction, h.tx + 0.5 + this.rng.range(-1, 1), h.ty + 0.5 + this.rng.range(-1, 1));

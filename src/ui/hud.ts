@@ -79,6 +79,14 @@ export class Hud {
     $('miracle-tip').classList.add('hidden');
   }
 
+  // DOM 写入 memo：值没变不碰 DOM（HUD 每帧刷新的写放大控制）
+  private textMemo = new Map<string, string>();
+  private setText(id: string, v: string): void {
+    if (this.textMemo.get(id) === v) return;
+    this.textMemo.set(id, v);
+    $(id).textContent = v;
+  }
+
   toast(text: string, kind: 'info' | 'warn' | 'good' = 'info'): void {
     const layer = $('toast-layer');
     if (layer.children.length > 3) layer.firstChild?.remove();
@@ -99,13 +107,13 @@ export class Hud {
       $('faith-fill').style.width = `${Math.min(100, fs.faith / cap * 100).toFixed(1)}%`;
       $('faith-num').textContent = `${faith} / ${Math.floor(cap)}`;
     }
-    $('faith-regen').textContent = `+${sim.faithRegen(0).toFixed(1)}/s`;
-    $('pop-own').textContent = String(sim.pop(0));
-    $('pop-foe').textContent = String(sim.pop(1));
+    this.setText('faith-regen', `+${sim.faithRegen(0).toFixed(1)}/s`);
+    this.setText('pop-own', String(sim.pop(0)));
+    this.setText('pop-foe', String(sim.pop(1)));
 
     // 时间 + 终焉倒计时
     const t = Math.floor(sim.time);
-    $('game-time').textContent = `${String(Math.floor(t / 60)).padStart(2, '0')}:${String(t % 60).padStart(2, '0')}`;
+    this.setText('game-time', `${String(Math.floor(t / 60)).padStart(2, '0')}:${String(t % 60).padStart(2, '0')}`);
     const toArm = ARMAGEDDON_S - sim.time;
     const banner = $('armageddon-banner');
     if (toArm <= 60 && toArm > 0) {

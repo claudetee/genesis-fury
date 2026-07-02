@@ -189,7 +189,7 @@ class Game {
   }
 
   private tryCast(x: number, y: number): void {
-    if (this.state !== 'playing' || !this.sim || !this.input) return;
+    if (this.state !== 'playing' || !this.sim || !this.input || this.sim.over) return;
     const id = this.input.selected;
     if (!id) return;
     const r = cast(this.sim, 0, id, x, y);
@@ -244,7 +244,7 @@ class Game {
       let steps = 0;
       while (this.acc >= SIM_DT && steps < 8) {
         this.sim.tick();
-        this.ai?.tick(SIM_DT);
+        if (!this.sim.over) this.ai?.tick(SIM_DT);   // 胜负已定：AI 停手，不在结算动画期改地形
         this.acc -= SIM_DT; steps++;
       }
       if (steps >= 8) this.acc = 0; // 长时间挂起后不追帧
