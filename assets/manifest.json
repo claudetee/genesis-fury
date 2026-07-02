@@ -76,6 +76,14 @@
       "outputs": [
         "ui/emblem.png"
       ]
+    },
+    "avatars": {
+      "model": "google/gemini-3-pro-image",
+      "at": "2026-07-02T17:02:02.644Z",
+      "outputs": [
+        "sprites/avatar_a.png",
+        "sprites/avatar_b.png"
+      ]
     }
   },
   "files": {
@@ -107,6 +115,8 @@
     "sprites/totem_a.png": true,
     "sprites/totem_b.png": true,
     "sprites/ruin.png": true,
-    "ui/emblem.png": true
+    "ui/emblem.png": true,
+    "sprites/avatar_a.png": true,
+    "sprites/avatar_b.png": true
   }
 }
