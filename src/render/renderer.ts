@@ -88,7 +88,7 @@ export class Renderer {
       this.terrain.markDirty(e.x0, e.y0, e.x1, e.y1);
       this.minimap?.markTerrainDirty();
     });
-    this.bus.on('waterChanged', () => { this.terrain.markAllDirty(); this.minimap?.markTerrainDirty(); });
+    this.bus.on('waterChanged', () => { this.terrain.markWaterAffected(); this.minimap?.markTerrainDirty(); });
     this.bus.on('quakeShake', (e) => {
       // 距离衰减震屏
       const c = this.camera.pickTile(this.camera.viewW / 2, this.camera.viewH / 2);

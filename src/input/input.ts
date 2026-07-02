@@ -27,8 +27,9 @@ export class InputManager {
   private pinchDist = 0;
   private keys = new Set<string>();
   private mouseX = 0; private mouseY = 0;
-  private brushHold = false;          // 塑地长按连发
+  private brushHold = false;          // 塑地长按连发（仅鼠标）
   private brushTimer = 0;
+  private hadMulti = false;           // 本手势曾出现多点触控 → 抑制 tap
   private detached: (() => void)[] = [];
   edgeScrollEnabled = true;
   camSpeedMult = 1;
@@ -57,14 +58,16 @@ export class InputManager {
       c.setPointerCapture(e.pointerId);
       this.pointers.set(e.pointerId, { id: e.pointerId, x: e.offsetX, y: e.offsetY, sx: e.offsetX, sy: e.offsetY, t: performance.now(), button: e.button });
       this.lastMoves = [];
-      if (this.pointers.size === 2) {
+      if (this.pointers.size >= 2) {
+        // 进入多点触控：抑制本手势期间与结束瞬间的一切 tap/施法
+        this.hadMulti = true;
         const [a, b] = [...this.pointers.values()];
         this.pinchDist = Math.hypot(a.x - b.x, a.y - b.y);
         this.dragging = false; this.brushHold = false;
       } else if (e.button === 1 || e.button === 2 || this.keys.has(' ')) {
         this.dragging = true; this.dragButton = e.button;
-      } else if (e.button === 0 && (this.selected === 'raise' || this.selected === 'lower')) {
-        // 塑地：按下立即施放 + 长按连发
+      } else if (e.button === 0 && e.pointerType === 'mouse' && (this.selected === 'raise' || this.selected === 'lower')) {
+        // 塑地长按连发只给鼠标；触屏用 tap（否则单指永远无法平移）
         this.castAt(e.offsetX, e.offsetY);
         this.brushHold = true; this.brushTimer = 0.18;
       }
@@ -107,11 +110,16 @@ export class InputManager {
       const p = this.pointers.get(e.pointerId);
       this.pointers.delete(e.pointerId);
       if (this.pointers.size < 2) this.pinchDist = 0;
+      // 手势状态无条件先清（enabled=false 时也不能把 dragging/brushHold 泄漏到恢复之后）
+      const wasBrush = this.brushHold, wasDragging = this.dragging;
+      const wasMulti = this.hadMulti;
+      if (this.pointers.size === 0) { this.dragging = false; this.brushHold = false; this.hadMulti = false; }
       if (!p || !this.enabled) return;
+      if (wasBrush) return;
+      if (wasMulti) return;               // 捏合/多指手势收尾：绝不判 tap（防缩放误施法）
       const dt = performance.now() - p.t;
       const total = Math.hypot(e.offsetX - p.sx, e.offsetY - p.sy);
-      if (this.brushHold) { this.brushHold = false; return; }
-      if (this.dragging) {
+      if (wasDragging) {
         // 惯性
         if (this.lastMoves.length >= 2) {
           const a = this.lastMoves[0], b = this.lastMoves[this.lastMoves.length - 1];
@@ -120,14 +128,17 @@ export class InputManager {
             this.cam.fling((b.x - a.x) / span, (b.y - a.y) / span);
           }
         }
-        this.dragging = false;
         return;
       }
       // tap → 施法
       if (p.button === 0 && total <= 8 && dt <= 400) this.castAt(e.offsetX, e.offsetY);
     };
     on(c, 'pointerup', finish);
-    on(c, 'pointercancel', (e: PointerEvent) => { this.pointers.delete(e.pointerId); this.dragging = false; this.brushHold = false; });
+    on(c, 'pointercancel', (e: PointerEvent) => {
+      this.pointers.delete(e.pointerId);
+      if (this.pointers.size === 0) { this.dragging = false; this.brushHold = false; this.hadMulti = false; }
+      if (this.pointers.size < 2) this.pinchDist = 0;
+    });
     on(c, 'pointerleave', () => { this.pointerOnCanvas = false; });
 
     on(c, 'wheel', (e: WheelEvent) => {

@@ -44,10 +44,13 @@ export class Screens {
     $('load-label').textContent = label;
   }
 
+  current: string | null = null;
   private showOnly(id: string | null): void {
     for (const s of document.querySelectorAll('#screen-layer .screen')) s.classList.add('hidden');
     if (id) $(id).classList.remove('hidden');
+    this.current = id;
   }
+  isSettingsOpen(): boolean { return this.current === 'screen-settings'; }
 
   showLoading(): void { this.showOnly('screen-loading'); }
   showTitle(hasSave: boolean): void {

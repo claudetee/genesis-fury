@@ -1,6 +1,7 @@
 // 地形渲染：8×8 个 chunk（每个 16×16 瓦片）的 WebGL Mesh。
 // 角点高度位移 + 逐顶点光照 + 单张地形图集 + 自定义 shader（水面波动/岩浆脉动内建）。
 // 高度显示值向模拟值缓动 → 神迹形变有"大地隆起"的动画而非瞬移。
+// rebuild 热路径零分配；沼泽/岩浆到期由 nextExpiry 驱动自愈重建。
 import { MAP, CORNERS, CHUNK, TILE_W, TILE_H, H_STEP } from '../core/const';
 import { World, TileType } from '../sim/world';
 import { AssetDb } from '../assets/loader';
@@ -47,11 +48,20 @@ const TILE_ORDER: number[] = (() => {
   return t;
 })();
 
+// rebuild 热路径的角点 scratch（零分配）
+const SC_GX = new Float64Array(4), SC_GY = new Float64Array(4), SC_GH = new Float64Array(4);
+const SC_U = new Float64Array(4), SC_V = new Float64Array(4), SC_RAW = new Float64Array(4);
+
 interface Chunk {
   mesh: any; pos: Float32Array; uv: Float32Array; col: Float32Array; misc: Float32Array;
   idx: Uint32Array; dirty: boolean; cx: number; cy: number;
   minX: number; maxX: number; minY: number; maxY: number;    // 世界像素包围盒
+  minH: number;                                              // 最低角点（洪水影响判定）
+  nextExpiry: number;                                        // 沼泽/岩浆最近到期时刻
 }
+
+// 图集纹理跨局缓存（AssetDb 会话内不变；避免每局重开泄漏 Cache 纹理）
+let cachedAtlasTex: any = null;
 
 export class TerrainRenderer {
   container: any;
@@ -71,10 +81,12 @@ export class TerrainRenderer {
     for (let i = 0; i < this.dispH.length; i++) this.dispH[i] = world.heights[i];
     this.dispWL = world.waterLevel;
 
-    const atlas = buildAtlas(assets);
-    const tex = PIXI.Texture.from(atlas);
-    tex.source.autoGenerateMipmaps = false;
-    tex.source.style.addressMode = 'clamp-to-edge';
+    if (!cachedAtlasTex) {
+      cachedAtlasTex = PIXI.Texture.from(buildAtlas(assets));
+      cachedAtlasTex.source.autoGenerateMipmaps = false;
+      cachedAtlasTex.source.style.addressMode = 'clamp-to-edge';
+    }
+    const tex = cachedAtlasTex;
     this.shader = PIXI.Shader.from({
       gl: { vertex: VERT_SRC, fragment: FRAG_SRC },
       resources: {
@@ -108,7 +120,7 @@ export class TerrainRenderer {
     });
     const mesh = new PIXI.Mesh({ geometry, shader: this.shader });
     this.container.addChild(mesh);
-    const c: Chunk = { mesh, pos, uv, col, misc, idx, dirty: true, cx, cy, minX: 0, maxX: 0, minY: 0, maxY: 0 };
+    const c: Chunk = { mesh, pos, uv, col, misc, idx, dirty: true, cx, cy, minX: 0, maxX: 0, minY: 0, maxY: 0, minH: 0, nextExpiry: Infinity };
     this.rebuild(c);
     return c;
   }
@@ -120,16 +132,28 @@ export class TerrainRenderer {
     for (const c of this.chunks) if (c.cx >= c0x && c.cx <= c1x && c.cy >= c0y && c.cy <= c1y) c.dirty = true;
     this.animating = true;
   }
+  /** 水位变化：只需重建近水 chunk（高地不受影响） */
+  markWaterAffected(): void {
+    const lim = Math.max(this.world.waterLevel, this.dispWL) + 1.2;
+    for (const c of this.chunks) if (c.minH <= lim) c.dirty = true;
+    this.animating = true;
+  }
   markAllDirty(): void { for (const c of this.chunks) c.dirty = true; this.animating = true; }
 
   update(dt: number, time: number, viewport: { x0: number; y0: number; x1: number; y1: number }): void {
     this.shader.resources.terrainUniforms.uniforms.uTime = time;
+    const simT = this.simTime();
+
+    // 沼泽/岩浆到期 → 自愈重建（否则视觉永久停在过期状态）
+    for (const c of this.chunks)
+      if (simT >= c.nextExpiry) { c.dirty = true; this.animating = true; }
 
     // 高度/水位显示值缓动（形变动画）
     if (this.animating) {
       let anyLeft = false;
       const k = 1 - Math.exp(-10 * dt);
       const H = this.world.heights, D = this.dispH;
+      const wdNow = this.world.waterLevel - this.dispWL;
       for (const c of this.chunks) {
         if (!c.dirty) continue;
         let moving = false;
@@ -142,14 +166,17 @@ export class TerrainRenderer {
             else D[i] = H[i];
           }
         }
-        const wd = this.world.waterLevel - this.dispWL;
-        if (Math.abs(wd) > 0.01) moving = true;
+        if (Math.abs(wdNow) > 0.01 && c.minH <= Math.max(this.world.waterLevel, this.dispWL) + 1.2) moving = true;
         this.rebuild(c);
         if (!moving) c.dirty = false; else anyLeft = true;
       }
       const wd = this.world.waterLevel - this.dispWL;
-      if (Math.abs(wd) > 0.01) { this.dispWL += wd * k; anyLeft = true; for (const c of this.chunks) c.dirty = true; }
-      else this.dispWL = this.world.waterLevel;
+      if (Math.abs(wd) > 0.01) {
+        this.dispWL += wd * k;
+        anyLeft = true;
+        const lim = Math.max(this.world.waterLevel, this.dispWL) + 1.2;
+        for (const c of this.chunks) if (c.minH <= lim) c.dirty = true;   // 只重建近水 chunk
+      } else this.dispWL = this.world.waterLevel;
       this.animating = anyLeft;
     }
 
@@ -173,23 +200,33 @@ export class TerrainRenderer {
     const t = this.simTime();
     const { pos, uv, col, misc, idx } = c;
     let minX = 1e9, maxX = -1e9, minY = 1e9, maxY = -1e9;
-
-    const tiles = TILE_ORDER; // 瓦片按 (x+y) 画家序（模块级预计算）
+    let minH = 1e9, nextExpiry = Infinity;
 
     let vi = 0, ii = 0;
-    for (const ti of tiles) {
-      const lx = ti % CHUNK, ly = Math.floor(ti / CHUNK);
+    for (let oi = 0; oi < TILE_ORDER.length; oi++) {
+      const ti = TILE_ORDER[oi];
+      const lx = ti % CHUNK, ly = (ti / CHUNK) | 0;
       const tx = c.cx * CHUNK + lx, ty = c.cy * CHUNK + ly;
       const i00 = ty * CORNERS + tx, i10 = i00 + 1, i01 = i00 + CORNERS, i11 = i01 + 1;
-      const rh = [D[i00], D[i10], D[i01], D[i11]];
+      SC_RAW[0] = D[i00]; SC_RAW[1] = D[i10]; SC_RAW[2] = D[i01]; SC_RAW[3] = D[i11];
       const type = w.tileType(tx, ty, t);
       const isWaterTile = type === TileType.Deep || type === TileType.Shallow;
       // 水下角点钳到水面（封住岸线）
-      const h = rh.map(v => Math.max(v, wl));
+      SC_GH[0] = SC_RAW[0] < wl ? wl : SC_RAW[0];
+      SC_GH[1] = SC_RAW[1] < wl ? wl : SC_RAW[1];
+      SC_GH[2] = SC_RAW[2] < wl ? wl : SC_RAW[2];
+      SC_GH[3] = SC_RAW[3] < wl ? wl : SC_RAW[3];
+      if (SC_RAW[0] < minH) minH = SC_RAW[0];
+      if (SC_RAW[3] < minH) minH = SC_RAW[3];
+
+      const ti2 = ty * MAP + tx;
+      const su = w.swampUntil[ti2], lu = w.lavaUntil[ti2];
+      if (su > t && su < nextExpiry) nextExpiry = su;
+      if (lu > t && lu < nextExpiry) nextExpiry = lu;
 
       // 图集 cell
-      const swamp = w.isSwamp(tx, ty, t);
-      const scorch = w.scorched[ty * MAP + tx] === 1;
+      const swamp = su > t;
+      const scorch = w.scorched[ti2] === 1;
       let cell: number, emissive = 0;
       if (isWaterTile) cell = 6;
       else if (swamp) cell = 7;
@@ -199,31 +236,36 @@ export class TerrainRenderer {
 
       // UV：cell 内 96px 窗口按 tileHash 抖动 → 打破重复感
       const hash = w.tileHash(tx, ty);
-      const cellX = (cell % COLS) * CELL, cellY = Math.floor(cell / COLS) * CELL;
+      const cellX = (cell % COLS) * CELL, cellY = ((cell / COLS) | 0) * CELL;
       const win = 96, inset = 8;
       const ox = cellX + inset + hash * (CELL - win - inset * 2);
       const oy = cellY + inset + ((hash * 7.13) % 1) * (CELL - win - inset * 2);
       const AW = CELL * COLS, AH = CELL * 2;
       const u0 = ox / AW, v0 = oy / AH, u1 = (ox + win) / AW, v1 = (oy + win) / AH;
 
-      // 逐角点：位置 / 光照 / misc
-      const corners = [[tx, ty, h[0], u0, v0], [tx + 1, ty, h[1], u1, v0], [tx, ty + 1, h[2], u0, v1], [tx + 1, ty + 1, h[3], u1, v1]];
+      SC_GX[0] = tx; SC_GY[0] = ty; SC_U[0] = u0; SC_V[0] = v0;
+      SC_GX[1] = tx + 1; SC_GY[1] = ty; SC_U[1] = u1; SC_V[1] = v0;
+      SC_GX[2] = tx; SC_GY[2] = ty + 1; SC_U[2] = u0; SC_V[2] = v1;
+      SC_GX[3] = tx + 1; SC_GY[3] = ty + 1; SC_U[3] = u1; SC_V[3] = v1;
+
       for (let k = 0; k < 4; k++) {
-        const [gx, gy, gh, uu, vv] = corners[k];
-        const px = isoX(gx, gy);
+        const gx = SC_GX[k], gy = SC_GY[k], gh = SC_GH[k];
+        const px = (gx - gy) * (TILE_W / 2);
         const py = (gx + gy) * (TILE_H / 2) - gh * H_STEP;
         pos[vi * 2] = px; pos[vi * 2 + 1] = py;
-        uv[vi * 2] = uu; uv[vi * 2 + 1] = vv;
+        uv[vi * 2] = SC_U[k]; uv[vi * 2 + 1] = SC_V[k];
         // 光照：坡度梯度（阳面西北）+ 高度微增亮
-        const ci = Math.min(CORNERS - 1, gy) * CORNERS + Math.min(CORNERS - 1, gx);
-        const hx = D[Math.min(CORNERS - 1, gy) * CORNERS + Math.min(CORNERS - 1, gx + 1)] - D[ci];
-        const hy = D[Math.min(CORNERS - 2, gy) * CORNERS + CORNERS + Math.min(CORNERS - 1, gx)] - D[ci];
+        const cgx = gx < CORNERS - 1 ? gx : CORNERS - 1;
+        const cgy = gy < CORNERS - 1 ? gy : CORNERS - 1;
+        const ci = cgy * CORNERS + cgx;
+        const hx = D[cgy * CORNERS + (cgx < CORNERS - 1 ? cgx + 1 : cgx)] - D[ci];
+        const hy = D[(cgy < CORNERS - 1 ? cgy + 1 : cgy) * CORNERS + cgx] - D[ci];
         let light = 0.86 - hx * 0.09 - hy * 0.16 + gh * 0.012;
-        light = Math.max(0.5, Math.min(1.18, light));
+        light = light < 0.5 ? 0.5 : light > 1.18 ? 1.18 : light;
         let r = light, g2 = light, b = light;
         if (isWaterTile) {
-          const depth = Math.max(0, wl - (rh[k] ?? 0));
-          const dk = Math.max(0.35, 1 - depth * 0.16);
+          const depth = wl - SC_RAW[k];
+          const dk = Math.max(0.35, 1 - (depth > 0 ? depth : 0) * 0.16);
           r = light * 0.9 * dk; g2 = light * 0.96 * dk; b = light * 1.08;
         } else if (scorch && cell === 4) { r *= 0.55; g2 *= 0.5; b *= 0.5; }
         if (swamp && !isWaterTile) { r *= 0.75; b *= 0.6; }
@@ -236,7 +278,7 @@ export class TerrainRenderer {
       }
       // 自适应对角线：让三角剖分贴合坡向
       const base = vi - 4;
-      if (Math.abs(h[0] - h[3]) <= Math.abs(h[1] - h[2])) {
+      if (Math.abs(SC_GH[0] - SC_GH[3]) <= Math.abs(SC_GH[1] - SC_GH[2])) {
         idx[ii++] = base; idx[ii++] = base + 1; idx[ii++] = base + 3;
         idx[ii++] = base; idx[ii++] = base + 3; idx[ii++] = base + 2;
       } else {
@@ -246,6 +288,7 @@ export class TerrainRenderer {
     }
 
     c.minX = minX; c.maxX = maxX; c.minY = minY - TILE_H; c.maxY = maxY + TILE_H;
+    c.minH = minH; c.nextExpiry = nextExpiry;
     const g = c.mesh.geometry;
     g.getBuffer('aPosition').update();
     g.getBuffer('aUV').update();

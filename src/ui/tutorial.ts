@@ -52,7 +52,8 @@ export class Tutorial {
 
   constructor(onDone: () => void) {
     this.onDone = onDone;
-    $('btn-tut-skip').addEventListener('click', () => this.finish());
+    // 持久 DOM + 每局新 Tutorial 实例 → 用 onclick 赋值防跨局监听器累积
+    ($('btn-tut-skip') as HTMLButtonElement).onclick = () => this.finish();
   }
 
   start(): void {

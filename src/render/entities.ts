@@ -7,6 +7,7 @@ import { AssetDb } from '../assets/loader';
 import { isoX } from './camera';
 
 const FACTION_TINT = [0x9fe8ff, 0xffb3ad];
+const texCache: { follower?: any[]; flame?: any; ring?: any } = {};
 
 export class EntityRenderer {
   container: any;
@@ -24,9 +25,15 @@ export class EntityRenderer {
     this.sim = sim; this.assets = assets; this.heightAt = heightAt;
     this.container = new PIXI.Container();
     this.container.sortableChildren = true;
-    this.followerTex = [makeFollowerTexture(0), makeFollowerTexture(1)];
-    this.flameTex = makeFlameTexture();
-    this.ringTex = makeRingTexture();
+    // 程序化纹理跨局缓存（重复开局不再向 PIXI Cache 泄漏新纹理）
+    if (!texCache.follower) {
+      texCache.follower = [makeFollowerTexture(0), makeFollowerTexture(1)];
+      texCache.flame = makeFlameTexture();
+      texCache.ring = makeRingTexture();
+    }
+    this.followerTex = texCache.follower;
+    this.flameTex = texCache.flame;
+    this.ringTex = texCache.ring;
   }
 
   sync(alpha: number, time: number): void {

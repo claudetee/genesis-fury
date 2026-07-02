@@ -30,31 +30,40 @@ export class Minimap {
       const ty = (e.clientY - r.top) / r.height * MAP;
       this.cam.centerOnTile(tx, ty);
     };
-    this.view.addEventListener('pointerdown', (e) => { down = true; this.view.setPointerCapture(e.pointerId); jump(e); });
-    this.view.addEventListener('pointermove', (e) => { if (down) jump(e); });
-    this.view.addEventListener('pointerup', () => { down = false; });
+    // #minimap 是持久 DOM，每局新 Minimap 实例 → onpointerXXX 赋值（幂等）防监听器跨局累积
+    this.view.onpointerdown = (e) => { down = true; this.view.setPointerCapture(e.pointerId); jump(e); };
+    this.view.onpointermove = (e) => { if (down) jump(e); };
+    this.view.onpointerup = () => { down = false; };
   }
 
   markTerrainDirty(): void { this.terrainDirty = true; }
 
   update(dt: number): void {
     this.entTimer -= dt;
+    if (this.sim.time >= this.nextExpiry) this.terrainDirty = true;   // 覆盖层到期自愈
     if (this.terrainDirty) { this.redrawTerrain(); this.terrainDirty = false; this.entTimer = 0; }
     if (this.entTimer <= 0) { this.entTimer = 0.33; this.redrawEntities(); }
   }
 
   private img: ImageData | null = null;
+  private nextExpiry = Infinity;   // 沼泽/岩浆最近到期 → 到点自动重绘
   private redrawTerrain(): void {
     const g = this.base.getContext('2d')!;
     if (!this.img) this.img = g.createImageData(MAP, MAP);
     const d = this.img.data;
     const w = this.sim.world, t = this.sim.time;
+    let nextExp = Infinity;
     for (let y = 0; y < MAP; y++)
       for (let x = 0; x < MAP; x++) {
-        const c = w.isSwamp(x, y, t) ? 0x42502c : TYPE_RGB[w.tileType(x, y, t)];
-        const i = (y * MAP + x) * 4;
+        const ti = y * MAP + x;
+        const su = w.swampUntil[ti], lu = w.lavaUntil[ti];
+        if (su > t && su < nextExp) nextExp = su;
+        if (lu > t && lu < nextExp) nextExp = lu;
+        const c = su > t ? 0x42502c : TYPE_RGB[w.tileType(x, y, t)];
+        const i = ti * 4;
         d[i] = c >> 16; d[i + 1] = (c >> 8) & 0xff; d[i + 2] = c & 0xff; d[i + 3] = 255;
       }
+    this.nextExpiry = nextExp;
     g.putImageData(this.img, 0, 0);
   }
 

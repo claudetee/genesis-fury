@@ -61,6 +61,7 @@ export class AudioEngine {
   }
 
   resume(): void { this.ctx?.resume(); }
+  isRunning(): boolean { return this.started && this.ctx?.state === 'running'; }
 
   // ── 环境音景 ────────────────────────────────────────
   private startAmbience(): void {

@@ -278,19 +278,37 @@ export class World {
   tileHash(tx: number, ty: number): number { return hash2(tx, ty, this.seed); }
 
   // ── 存档 ────────────────────────────────────────────
-  serialize(): { seed: number; h: string; rock: string; scorch: string; wl: number } {
+  serialize(): WorldSave {
     return {
       seed: this.seed,
       h: rle(this.heights), rock: rle(this.rockified), scorch: rle(this.scorched),
       wl: this.baseWaterLevel,
+      sw: sparse(this.swampUntil), lv: sparse(this.lavaUntil),
     };
   }
-  static deserialize(bus: EventBus, d: { seed: number; h: string; rock: string; scorch: string; wl: number }): World {
+  static deserialize(bus: EventBus, d: WorldSave): World {
     const w = new World(bus, d.seed, false);
     unrle(d.h, w.heights); unrle(d.rock, w.rockified); unrle(d.scorch, w.scorched);
     w.baseWaterLevel = d.wl; w.waterLevel = d.wl;
+    if (d.sw) unsparse(d.sw, w.swampUntil);
+    if (d.lv) unsparse(d.lv, w.lavaUntil);
     return w;
   }
+}
+
+export interface WorldSave {
+  seed: number; h: string; rock: string; scorch: string; wl: number;
+  sw?: number[]; lv?: number[];   // 稀疏 [idx,until,idx,until,...]（沼泽/岩浆限时覆盖层）
+}
+
+// 稀疏编码限时覆盖层（活跃格通常极少）
+function sparse(a: Float32Array): number[] {
+  const out: number[] = [];
+  for (let i = 0; i < a.length; i++) if (a[i] > 0) out.push(i, Math.round(a[i] * 10) / 10);
+  return out;
+}
+function unsparse(s: number[], target: Float32Array): void {
+  for (let i = 0; i + 1 < s.length; i += 2) target[s[i]] = s[i + 1];
 }
 
 // 简单 RLE + base64（高度场大片同值，压得很小）

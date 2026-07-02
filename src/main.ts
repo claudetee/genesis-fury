@@ -61,9 +61,15 @@ class Game {
     this.screens.setLoadProgress(1, '神座已就绪');
     await sleep(350);
     this.toTitle();
-    // 首次手势启动音频（浏览器策略）
-    const kick = () => { this.audio.start(); this.audio.resume(); window.removeEventListener('pointerdown', kick); };
-    window.addEventListener('pointerdown', kick);
+    // 用户手势解锁音频（iOS Safari 对 pointerdown 可能不放行 → 多事件监听 + 确认 running 才解绑）
+    const unlockEvents = ['pointerdown', 'touchend', 'keydown'];
+    const tryUnlock = () => {
+      this.audio.start(); this.audio.resume();
+      setTimeout(() => {
+        if (this.audio.isRunning()) unlockEvents.forEach(ev => window.removeEventListener(ev, tryUnlock));
+      }, 250);
+    };
+    unlockEvents.forEach(ev => window.addEventListener(ev, tryUnlock));
     document.addEventListener('visibilitychange', () => {
       if (document.hidden) { if (this.state === 'playing') { this.pause(); this.saveNow(); } }
       else this.audio.resume();
@@ -101,20 +107,21 @@ class Game {
   private async mount(bus: EventBus, sim: Sim, withTutorial: boolean): Promise<void> {
     this.screens.showLoading();
     this.screens.setLoadProgress(0.2, '编织大地经纬……');
-    this.bus = bus; this.sim = sim;
-    this.ai = new EnemyGod(sim, this.difficulty);
-    this.audio.bind(bus);
-
-    this.renderer = new Renderer(sim, bus, this.assets);
+    // ⚠️ 初始化完成前不碰 this.renderer/this.sim —— 上一局的 RAF 循环可能仍在跑，
+    //    提前赋值会让它 update 一个未初始化的 renderer（重开局崩溃竞态）
+    const renderer = new Renderer(sim, bus, this.assets);
     const host = document.getElementById('game-root')!;
     host.innerHTML = '';
-    try { await this.renderer.init(host); }
+    try { await renderer.init(host); }
     catch (e) { fatalError(`渲染引擎无法启动（${(e as Error).message}）。请使用支持 WebGL 的现代浏览器。`); return; }
+    this.bus = bus; this.sim = sim; this.renderer = renderer;
+    this.ai = new EnemyGod(sim, this.difficulty);
+    this.audio.bind(bus);
     this.screens.setLoadProgress(0.7, '召唤信徒……');
 
     this.hud = new Hud(sim, this.assets, bus, {
       onSelect: (id) => this.select(id),
-      onPause: () => this.state === 'playing' ? this.pause() : this.resume(),
+      onPause: () => this.handleEsc(),
       onToggleSound: () => this.hud!.setSoundIcon(this.audio.toggleMute()),
       onOpenSettings: () => { this.pause(); this.screens.openSettings('pause'); },
       onSpeed: () => { this.speed = this.speed >= 3 ? 1 : this.speed + 1; return this.speed; },
@@ -125,7 +132,7 @@ class Game {
     this.input = new InputManager(this.renderer.app.canvas, this.renderer.camera, {
       onCast: (x, y) => this.tryCast(x, y),
       onSelectMiracle: (id) => this.hud!.setSelected(id),
-      onPause: () => this.state === 'playing' ? this.pause() : this.state === 'paused' ? this.resume() : void 0,
+      onPause: () => this.handleEsc(),
       onToggleDebug: () => { this.showDebug = !this.showDebug; },
     });
     this.applySettings(this.settings);
@@ -162,11 +169,13 @@ class Game {
   }
 
   private teardown(): void {
+    if (this.raf) { cancelAnimationFrame(this.raf); this.raf = 0; }
     this.input?.destroy(); this.input = null;
     this.renderer?.destroy(); this.renderer = null;
     this.hud?.hide(); this.hud = null;
     this.bus?.clear(); this.bus = null;
     this.sim = null; this.ai = null; this.tutorial = null; this.tutCtx = null;
+    this.prevCam = null; this.speed = 1; this.endPending = 0;
     document.getElementById('game-root')!.innerHTML = '';
     document.getElementById('tutorial-card')!.classList.add('hidden');
   }
@@ -185,6 +194,15 @@ class Game {
     if (!id) return;
     const r = cast(this.sim, 0, id, x, y);
     if (r === 'ok' && this.tutCtx) this.tutCtx.castCounts[id] = (this.tutCtx.castCounts[id] ?? 0) + 1;
+  }
+
+  /** Esc / 暂停按钮统一入口：设置页 → 回暂停菜单；暂停 → 继续；游戏中 → 暂停 */
+  private handleEsc(): void {
+    if (this.state === 'playing') this.pause();
+    else if (this.state === 'paused') {
+      if (this.screens.isSettingsOpen()) this.screens.showPause();
+      else this.resume();
+    }
   }
 
   private pause(): void {

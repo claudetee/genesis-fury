@@ -5,6 +5,7 @@ import { EventBus } from '../core/events';
 import { isoX } from './camera';
 
 const POOL_SIZE = 640;
+const fxTexCache: { soft?: any; spark?: any; smoke?: any; pillar?: any } = {};
 
 interface Particle {
   spr: any; alive: boolean;
@@ -32,10 +33,17 @@ export class FxRenderer {
     this.screen = new PIXI.Container();
     this.cursor = new PIXI.Graphics();
     this.world.addChild(this.cursor);
-    this.softTex = softCircle(48, [255, 255, 255]);
-    this.sparkTex = softCircle(20, [255, 255, 255]);
-    this.smokeTex = softCircle(64, [255, 255, 255], 0.55);
-    this.pillarTex = pillarTexture();
+    // 程序化纹理跨局缓存（防重复开局泄漏进 PIXI Cache）
+    if (!fxTexCache.soft) {
+      fxTexCache.soft = softCircle(48, [255, 255, 255]);
+      fxTexCache.spark = softCircle(20, [255, 255, 255]);
+      fxTexCache.smoke = softCircle(64, [255, 255, 255], 0.55);
+      fxTexCache.pillar = pillarTexture();
+    }
+    this.softTex = fxTexCache.soft;
+    this.sparkTex = fxTexCache.spark;
+    this.smokeTex = fxTexCache.smoke;
+    this.pillarTex = fxTexCache.pillar;
 
     for (let i = 0; i < POOL_SIZE; i++) {
       const spr = new PIXI.Sprite(this.softTex);

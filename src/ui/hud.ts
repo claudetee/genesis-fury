@@ -44,10 +44,12 @@ export class Hud {
       this.slots.set(m.id, b);
     }
 
-    $('btn-pause').addEventListener('click', () => this.cb.onPause());
-    $('btn-settings').addEventListener('click', () => this.cb.onOpenSettings());
-    $('btn-sound').addEventListener('click', () => this.cb.onToggleSound());
-    $('btn-speed').addEventListener('click', () => { $('btn-speed').textContent = `${this.cb.onSpeed()}×`; });
+    // ⚠️ 这些按钮是持久 DOM，Hud 每局重建 —— 必须用 onclick 赋值（幂等）而非 addEventListener（跨局累积）
+    $('btn-pause').onclick = () => this.cb.onPause();
+    $('btn-settings').onclick = () => this.cb.onOpenSettings();
+    $('btn-sound').onclick = () => this.cb.onToggleSound();
+    $('btn-speed').onclick = () => { $('btn-speed').textContent = `${this.cb.onSpeed()}×`; };
+    $('btn-speed').textContent = '1×';
 
     bus.on('miracleDenied', (e) => {
       const slot = this.slots.get(e.id);

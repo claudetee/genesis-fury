@@ -189,7 +189,7 @@ button { font-family: inherit; cursor: pointer; border: none; background: none; 
 #hud { position: fixed; inset: 0; pointer-events: none; z-index: 20; }
 #hud > * { pointer-events: auto; }
 
-#hud-topleft { position: absolute; top: 14px; left: 14px; padding: 10px 14px; min-width: 240px; }
+#hud-topleft { position: absolute; top: max(14px, env(safe-area-inset-top)); left: max(14px, env(safe-area-inset-left)); padding: 10px 14px; min-width: 240px; }
 #faith-row { display: flex; align-items: center; gap: 10px; }
 #faith-emblem { width: 40px; height: 40px; object-fit: contain; filter: drop-shadow(0 0 8px rgba(232,195,102,.5)); }
 #faith-bar-wrap { flex: 1; }
@@ -223,7 +223,7 @@ button { font-family: inherit; cursor: pointer; border: none; background: none; 
 .dot-foe { background: var(--crimson); box-shadow: 0 0 6px var(--crimson); }
 .pop-own b { color: var(--teal); } .pop-foe b { color: var(--crimson); }
 
-#hud-topright { position: absolute; top: 14px; right: 14px; display: flex; gap: 8px; align-items: center; }
+#hud-topright { position: absolute; top: max(14px, env(safe-area-inset-top)); right: max(14px, env(safe-area-inset-right)); display: flex; gap: 8px; align-items: center; }
 #time-panel { padding: 8px 12px; display: flex; align-items: center; gap: 10px; font-size: 15px; letter-spacing: 2px; }
 #game-time { min-width: 52px; text-align: center; color: var(--gold); }
 
@@ -240,8 +240,10 @@ button { font-family: inherit; cursor: pointer; border: none; background: none; 
 
 /* 神迹栏 */
 #miracle-bar {
-  position: absolute; bottom: 12px; left: 50%; transform: translateX(-50%);
+  position: absolute; bottom: max(12px, env(safe-area-inset-bottom)); left: 50%; transform: translateX(-50%);
   display: flex; gap: 7px;
+  flex-wrap: wrap; justify-content: center;
+  max-width: min(96vw, 700px);
   padding: 12px 16px 9px;
   border: 14px solid transparent;
   border-image: var(--img-panel) 96 / 14px stretch;
@@ -251,6 +253,7 @@ button { font-family: inherit; cursor: pointer; border: none; background: none; 
 }
 .miracle-slot {
   position: relative;
+  flex-shrink: 0;
   width: 62px; height: 62px;
   border: 2px solid #4a4436; border-radius: 50%;
   background: radial-gradient(circle at 40% 32%, #37332a, #17150f 80%);
@@ -305,7 +308,7 @@ button { font-family: inherit; cursor: pointer; border: none; background: none; 
 #miracle-tip p { margin-top: 4px; color: #5d4d30; letter-spacing: 1px; }
 
 /* 小地图 */
-#minimap-panel { position: absolute; right: 14px; bottom: 14px; padding: 5px; line-height: 0; }
+#minimap-panel { position: absolute; right: max(14px, env(safe-area-inset-right)); bottom: max(14px, env(safe-area-inset-bottom)); padding: 5px; line-height: 0; }
 #minimap { width: 172px; height: 172px; image-rendering: pixelated; cursor: crosshair; border-radius: 2px; }
 
 /* Toast */

@@ -8,7 +8,7 @@ import {
 } from '../core/const';
 import { Rng } from '../core/rng';
 import { EventBus } from '../core/events';
-import { World, TileType } from './world';
+import { World, WorldSave } from './world';
 import { Follower, House, Totem, FactionState, FState } from './entities';
 
 export class Sim {
@@ -184,11 +184,14 @@ export class Sim {
       if (f.blessedUntil > t) f.hp = Math.min(FOLLOWER_HP, f.hp + 1.5 * SIM_DT);
       if (f.hp <= 0) { dead.push(f); continue; }
 
-      // 战斗：找 1.1 tile 内敌人
+      // 战斗：找 1.1 tile 内敌人（进战斗前释放建地预约，防 reserved[] 孤儿泄漏）
       if (f.state !== FState.Fight) {
         this.nearbyFollowers(f.x, f.y, 1.1, this.scratch);
         for (const e of this.scratch) {
-          if (e.faction !== f.faction && e.hp > 0) { f.state = FState.Fight; f.enemyId = e.id; break; }
+          if (e.faction !== f.faction && e.hp > 0) {
+            this.releaseReservation(f);
+            f.state = FState.Fight; f.enemyId = e.id; break;
+          }
         }
       }
 
@@ -249,6 +252,7 @@ export class Sim {
         f.wanderTimer = this.rng.range(0.8, 1.6);
         const site = this.findSettleSite(f);
         if (site) {
+          this.releaseReservation(f); // 兜底：覆盖旧目标前先释放（防任何遗漏路径的孤儿预约）
           f.buildX = site.tx; f.buildY = site.ty;
           this.reserved[site.ty * MAP + site.tx] = f.id;
           f.state = FState.Seek;
@@ -290,7 +294,11 @@ export class Sim {
       else if (this.world.isWalkable(Math.floor(f.x), Math.floor(ny), t)) nx = f.x;
       else {
         f.stuck += 1;
-        if (f.stuck > 4) { f.targetX = f.x + this.rng.range(-6, 6); f.targetY = f.y + this.rng.range(-6, 6); f.stuck = 0; f.state = FState.Wander; }
+        if (f.stuck > 4) {
+          this.releaseReservation(f); // 放弃当前目标 → 必须释放预约
+          f.targetX = f.x + this.rng.range(-6, 6); f.targetY = f.y + this.rng.range(-6, 6);
+          f.stuck = 0; f.state = FState.Wander;
+        }
         return;
       }
     }
@@ -446,10 +454,10 @@ export class Sim {
   serialize(): SaveData {
     return {
       v: 1, time: this.time, world: this.world.serialize(),
-      followers: this.followers.map(f => [f.id, f.faction, +f.x.toFixed(2), +f.y.toFixed(2), +f.hp.toFixed(1)] as const),
-      houses: this.houses.map(h => [h.id, h.faction, h.tx, h.ty, h.level, Math.round(h.hp), h.occupants, +h.buildProgress.toFixed(2)] as const),
+      followers: this.followers.map(f => [f.id, f.faction, +f.x.toFixed(2), +f.y.toFixed(2), +f.hp.toFixed(1), +f.blessedUntil.toFixed(1)] as const),
+      houses: this.houses.map(h => [h.id, h.faction, h.tx, h.ty, h.level, Math.round(h.hp), h.occupants, +h.buildProgress.toFixed(2), +h.fireUntil.toFixed(1), +h.blessedUntil.toFixed(1)] as const),
       totems: this.totems.map(tt => [tt.id, tt.faction, +tt.x.toFixed(1), +tt.y.toFixed(1), +tt.until.toFixed(1)] as const),
-      factions: this.factions.map(fs => ({ faith: Math.round(fs.faith), casts: fs.miracleCasts, peak: fs.peakPop })),
+      factions: this.factions.map(fs => ({ faith: Math.round(fs.faith), casts: fs.miracleCasts, peak: fs.peakPop, cd: { ...fs.cooldowns } })),
       floodUntil: this.floodUntil, nextId: this.nextId, rngState: this.rng.state(), armageddon: this.armageddonFired,
     };
   }
@@ -460,10 +468,10 @@ export class Sim {
     sim.time = d.time; sim.floodUntil = d.floodUntil; sim.nextId = d.nextId;
     sim.armageddonFired = d.armageddon; sim.rng.setState(d.rngState);
     sim.graceUntil = d.time + 3;
-    for (const [id, faction, x, y, hp] of d.followers)
-      sim.followers.push({ id, faction, x, y, px: x, py: y, hp, state: FState.Wander, targetX: x, targetY: y, buildX: -1, buildY: -1, enemyId: -1, blessedUntil: 0, wanderTimer: 0, stuck: 0 });
-    for (const [id, faction, tx, ty, level, hp, occupants, buildProgress] of d.houses) {
-      sim.houses.push({ id, faction, tx, ty, level, hp, occupants, buildProgress, spawnTimer: 0, upgradeTimer: 0, fireUntil: 0, blessedUntil: 0, ejectTimer: 0 });
+    for (const [id, faction, x, y, hp, blessedUntil] of d.followers)
+      sim.followers.push({ id, faction, x, y, px: x, py: y, hp, state: FState.Wander, targetX: x, targetY: y, buildX: -1, buildY: -1, enemyId: -1, blessedUntil: blessedUntil ?? 0, wanderTimer: 0, stuck: 0 });
+    for (const [id, faction, tx, ty, level, hp, occupants, buildProgress, fireUntil, blessedUntil] of d.houses) {
+      sim.houses.push({ id, faction, tx, ty, level, hp, occupants, buildProgress, spawnTimer: 0, upgradeTimer: 0, fireUntil: fireUntil ?? 0, blessedUntil: blessedUntil ?? 0, ejectTimer: 0 });
       sim.occupancy[ty * MAP + tx] = id;
     }
     for (const [id, faction, x, y, until] of d.totems) sim.totems.push({ id, faction, x, y, until });
@@ -471,6 +479,7 @@ export class Sim {
       sim.factions[f].faith = d.factions[f].faith;
       sim.factions[f].miracleCasts = d.factions[f].casts;
       sim.factions[f].peakPop = d.factions[f].peak;
+      sim.factions[f].cooldowns = d.factions[f].cd ?? {};
     }
     if (d.floodUntil > d.time) world.setWaterLevel(world.baseWaterLevel + 1);
     return sim;
@@ -479,11 +488,11 @@ export class Sim {
 
 export interface SaveData {
   v: number; time: number;
-  world: { seed: number; h: string; rock: string; scorch: string; wl: number };
-  followers: (readonly [number, number, number, number, number])[];
-  houses: (readonly [number, number, number, number, number, number, number, number])[];
+  world: WorldSave;
+  followers: (readonly [number, number, number, number, number, number?])[];
+  houses: (readonly [number, number, number, number, number, number, number, number, number?, number?])[];
   totems: (readonly [number, number, number, number, number])[];
-  factions: { faith: number; casts: number; peak: number }[];
+  factions: { faith: number; casts: number; peak: number; cd?: Record<string, number> }[];
   floodUntil: number; nextId: number; rngState: number; armageddon: boolean;
 }
 
