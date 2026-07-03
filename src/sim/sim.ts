@@ -324,9 +324,11 @@ export class Sim {
     for (const a of this.avatars) {
       if (!a.alive) {
         if (t >= a.respawnAt) {
+          // 转生点必须可行走：锚点可能在水里（房屋质心/洪水），螺旋搜索最近陆地，兜底出生高地
           const anchor = this.factionAnchor(a.faction);
+          const spot = this.nearestWalkable(anchor.x, anchor.y) ?? this.world.spawns[a.faction];
           a.alive = true; a.hp = AVATAR_HP;
-          a.x = a.px = anchor.x; a.y = a.py = anchor.y;
+          a.x = a.px = spot.x; a.y = a.py = spot.y;
           a.targetX = a.x; a.targetY = a.y;
           a.invulnUntil = t + AVATAR_INVULN_S;
           this.bus.emit('avatarRespawn', { faction: a.faction, x: a.x, y: a.y });
@@ -678,6 +680,23 @@ export class Sim {
     return null;
   }
 
+  /** 由内向外环形搜索最近可行走瓦片中心（半径 12 内），找不到返回 null */
+  nearestWalkable(cx: number, cy: number): { x: number; y: number } | null {
+    const t = this.time;
+    const bx = Math.floor(cx), by = Math.floor(cy);
+    if (this.world.isWalkable(bx, by, t)) return { x: bx + 0.5, y: by + 0.5 };
+    for (let r = 1; r <= 12; r++) {
+      for (let dy = -r; dy <= r; dy++) {
+        for (let dx = -r; dx <= r; dx++) {
+          if (Math.max(Math.abs(dx), Math.abs(dy)) !== r) continue;   // 只扫环
+          const tx = bx + dx, ty = by + dy;
+          if (this.world.isWalkable(tx, ty, t)) return { x: tx + 0.5, y: ty + 0.5 };
+        }
+      }
+    }
+    return null;
+  }
+
   factionAnchor(faction: number): { x: number; y: number } {
     let sx = 0, sy = 0, n = 0;
     for (const h of this.houses) if (h.faction === faction) { sx += h.tx; sy += h.ty; n++; }
@@ -781,6 +800,7 @@ export class Sim {
       houses: this.houses.map(h => [h.id, h.faction, h.tx, h.ty, h.level, Math.round(h.hp), h.occupants, +h.buildProgress.toFixed(2), +h.fireUntil.toFixed(1), +h.blessedUntil.toFixed(1)] as const),
       totems: this.totems.map(tt => [tt.id, tt.faction, +tt.x.toFixed(1), +tt.y.toFixed(1), +tt.until.toFixed(1)] as const),
       avatars: this.avatars.map(a => [a.faction, +a.x.toFixed(2), +a.y.toFixed(2), +a.hp.toFixed(1), a.alive ? 1 : 0, +a.respawnAt.toFixed(1)] as const),
+      fstorms: this.firestorms.map(fs => [+fs.x.toFixed(2), +fs.y.toFixed(2), +fs.until.toFixed(2), +fs.acc.toFixed(3)] as const),
       factions: this.factions.map(fs => ({ faith: Math.round(fs.faith), casts: fs.miracleCasts, peak: fs.peakPop, cd: { ...fs.cooldowns } })),
       floodUntil: this.floodUntil, nextId: this.nextId, rngState: this.rng.state(), armageddon: this.armageddonFired,
     };
@@ -808,6 +828,7 @@ export class Sim {
       a.x = a.px = a.targetX = x; a.y = a.py = a.targetY = y;
       a.hp = hp; a.alive = alive === 1; a.respawnAt = respawnAt;
     }
+    if (d.fstorms) for (const [x, y, until, acc] of d.fstorms) sim.firestorms.push({ x, y, until, acc });
     for (let f = 0; f < 2; f++) {
       sim.factions[f].faith = d.factions[f].faith;
       sim.factions[f].miracleCasts = d.factions[f].casts;
@@ -827,6 +848,7 @@ export interface SaveData {
   houses: (readonly [number, number, number, number, number, number, number, number, number?, number?])[];
   totems: (readonly [number, number, number, number, number])[];
   avatars?: (readonly [number, number, number, number, number, number])[];
+  fstorms?: (readonly [number, number, number, number])[];
   factions: { faith: number; casts: number; peak: number; cd?: Record<string, number> }[];
   floodUntil: number; nextId: number; rngState: number; armageddon: boolean;
 }

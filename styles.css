@@ -309,9 +309,10 @@ button { font-family: inherit; cursor: pointer; border: none; background: none; 
 .miracle-slot.deny { animation: slotDeny .28s ease; border-color: #c0503a; }
 
 #miracle-tip {
-  position: absolute; bottom: 108px; left: 50%; transform: translateX(-50%);
+  position: absolute; bottom: 205px; left: 50%; transform: translateX(-50%);
   padding: 10px 20px; max-width: 320px;
   font-size: 13px; text-align: center;
+  pointer-events: none;   /* 纯展示：不抢槽位 hover/click */
 }
 #miracle-tip b { font-size: 16px; letter-spacing: 3px; color: #6b4a14; }
 #tip-cost { margin-left: 10px; color: #2a6a7a; font-size: 13px; }
@@ -363,15 +364,19 @@ button { font-family: inherit; cursor: pointer; border: none; background: none; 
   #hud-topleft { min-width: 180px; padding: 8px 10px; transform: scale(.88); transform-origin: top left; }
   #miracle-bar { gap: 4px; padding: 9px 10px 7px; bottom: 8px; max-width: 98vw; }
   .miracle-slot { width: 50px; height: 50px; }
-  #minimap { width: 118px; height: 118px; }
-  #minimap-panel { bottom: 92px; }
+  #minimap { width: 108px; height: 108px; }
+  #minimap-panel { bottom: 176px; }   /* 双排/三排神迹栏之上，不遮槽位 */
   #game-title { letter-spacing: 14px; text-indent: 14px; }
   .btn-grand { min-width: 200px; font-size: 17px; }
-  #tutorial-card { left: 10px; right: 10px; max-width: none; top: auto; bottom: 96px; transform: none; }
-  #miracle-tip { bottom: 84px; max-width: 90vw; }
+  #tutorial-card { left: 10px; right: 10px; max-width: none; top: auto; bottom: 190px; transform: none; }
+  #miracle-tip { bottom: 178px; max-width: 90vw; }
 }
 @media (max-width: 520px) {
   .miracle-slot { width: 42px; height: 42px; }
   .miracle-slot .cost { font-size: 9px; bottom: -6px; }
   #hud-topright { transform: scale(.85); transform-origin: top right; }
+  #minimap { width: 88px; height: 88px; }
+  #minimap-panel { bottom: 208px; }   /* 三排栏更高 */
+  #miracle-tip { bottom: 210px; }
+  #tutorial-card { bottom: 222px; }
 }

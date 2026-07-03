@@ -65,10 +65,10 @@ export const MIRACLES: MiracleDef[] = [
 // ── 营造（建筑放置，与神迹同门不同栏）──────────────────
 export interface BuildDef { id: string; name: string; icon: string; cost: number; hotkey: string; desc: string }
 export const BUILDINGS: BuildDef[] = [
-  { id: 'barracks',   name: '武堂',   icon: 'barracks',   cost: 90,  hotkey: 'q', desc: '信徒入内受训为战士——皮糙肉厚的近卫' },
-  { id: 'mageschool', name: '火祭坛', icon: 'mageschool', cost: 110, hotkey: 'w', desc: '信徒入内受训为火法师——掷焰的远击手' },
-  { id: 'sanctum',    name: '圣所',   icon: 'sanctum',    cost: 100, hotkey: 'e', desc: '信徒入内受训为传教士——不战而屈人之兵' },
-  { id: 'tower',      name: '守卫塔', icon: 'tower',      cost: 70,  hotkey: 'r', desc: '自动喷吐圣焰，狙杀来犯之敌' },
+  { id: 'barracks',   name: '武堂',   icon: 'barracks',   cost: 90,  hotkey: 'z', desc: '信徒入内受训为战士——皮糙肉厚的近卫' },
+  { id: 'mageschool', name: '火祭坛', icon: 'mageschool', cost: 110, hotkey: 'x', desc: '信徒入内受训为火法师——掷焰的远击手' },
+  { id: 'sanctum',    name: '圣所',   icon: 'sanctum',    cost: 100, hotkey: 'c', desc: '信徒入内受训为传教士——不战而屈人之兵' },
+  { id: 'tower',      name: '守卫塔', icon: 'tower',      cost: 70,  hotkey: 'v', desc: '自动喷吐圣焰，狙杀来犯之敌' },
 ];
 
 // ── 职业 ──────────────────────────────────────────────

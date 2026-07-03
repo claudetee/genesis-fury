@@ -25,6 +25,7 @@ export class FxRenderer {
   private emitters: { x: number; y: number; until: number; kind: string; acc: number }[] = [];
   private heightAt: (x: number, y: number) => number;
   private quality = 1;
+  dead = false;               // teardown 后置位，悬挂的 setTimeout 回调自弃
   private softTex: any; private sparkTex: any; private smokeTex: any; private pillarTex: any; private markerTex: any;
 
   constructor(bus: EventBus, heightAt: (x: number, y: number) => number, viewSize: () => { w: number; h: number }) {
@@ -140,8 +141,9 @@ export class FxRenderer {
     spr.scale.set(1.2);
     this.world.addChild(spr);
     this.projectiles.push({ spr, x0: gx + 180, y0: gy - 560, x1: gx, y1: gy, t: 0, dur: 0.5 });
-    // 撞击延迟爆炸（与 dur 同步）
+    // 撞击延迟爆炸（与 dur 同步；teardown 后回调必须变 no-op，防操作已销毁 sprite）
     setTimeout(() => {
+      if (this.dead) return;
       this.spawn(x, y, { n: 14, speed: [50, 170], up: [40, 150], life: [0.3, 0.7], s0: 0.4, s1: 0, tint: 0xffb050, blend: 'add', tex: this.sparkTex });
       this.spawn(x, y, { n: 8, speed: [20, 70], up: [20, 70], grav: -30, life: [0.8, 1.6], s0: 0.7, s1: 1.6, tint: 0x584838, tex: this.smokeTex });
     }, 480);

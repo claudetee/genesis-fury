@@ -58,12 +58,14 @@ export class Hud {
     $('btn-speed').textContent = '1×';
 
     bus.on('miracleDenied', (e) => {
-      const slot = this.slots.get(e.id);
+      // 营造槽 key 带 b: 前缀（placeBuilding emit 裸 id）
+      const slot = this.slots.get(e.id) ?? this.slots.get(`b:${e.id}`);
       if (slot) { slot.classList.remove('deny'); void slot.offsetWidth; slot.classList.add('deny'); }
       if (e.reason === 'faith') this.toast('信仰之力不足', 'warn');
       else if (e.reason === 'cooldown') this.toast('神迹尚在酝酿', 'warn');
       else if (e.reason === 'range') this.toast('超出神使的祈告范围——点击大地移动她', 'warn');
       else if (e.reason === 'dead') this.toast('神使殒落，等待转生', 'warn');
+      else if (e.reason === 'invalid') this.toast('此处无法安放', 'warn');
     });
     bus.on('toast', (e) => this.toast(e.text, e.kind));
     bus.on('armageddon', () => this.toast('终焉审判降临！神力奔涌！', 'warn'));

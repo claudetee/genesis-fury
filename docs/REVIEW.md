@@ -38,3 +38,21 @@
 - 连开两局回归：速度按钮单步、Esc 链正确、零错误（重开局竞态与监听器泄漏的针对性验证）
 - `tools/sim_test.ts`：12 分钟无头对局，AI 不再自拆城（`house:terrain:f1` 归零），0.31ms/tick
 - 存档往返：serialize→deserialize→serialize 字节级一致，沼泽 18 格/3 项冷却读档全保留
+
+---
+
+# Batch 2 审查记录 — 2026-07-03（wiki 机制批次 + ultracode）
+
+Workflow：5 维审查（sim-mechanics/ai-balance/render-fx/ui-input/save-load）→ 对抗验证 → 3 组 playtest。
+12 个验证/playtest agent 因账号额度中断，5 条 confirmed findings 全部修复：
+
+1. [high] 神使转生落点不验证可行走性——房屋质心在水里时 AI 化身陷入转生→溺死死循环 → nearestWalkable 螺旋搜索 + 出生高地兜底
+2. [high] #miracle-tip 遮挡双排神迹栏上排并抢 hover/click → pointer-events:none + 锚到栏上方
+3. [medium] 营造 denied 事件 id 无 b: 前缀，槽位 deny 动画永不播 + invalid 无 toast → 双 key 查找 + 补文案
+4. [medium] 窄屏三排栏被小地图遮挡 → 移动端布局重排（minimap/tip/tutorial 全部让位）
+5. [medium] firestorms 不入档（180 信仰白扣）→ 序列化补齐
+6. [追加] teardown 后 meteorStrike/doodads 的 setTimeout 悬挂回调操作已销毁 sprite → dead flag 自弃
+
+热键冲突（W=火祭坛 vs W=镜头上移）在审查期间自查修复：营造热键改 Z/X/C/V。
+平衡调整：繁衍减速 [13,10,8]、扩张随房屋数递减、信仰产出次线性 pow(0.88)，
+对局曲线从 3 分钟人口破千修正为渐进增长（30s≈10 → 240s≈400-600）。

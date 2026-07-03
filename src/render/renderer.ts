@@ -64,8 +64,8 @@ export class Renderer {
     this.doodads = new DoodadRenderer(sim, this.assets, this.entities.container, this.bus,
       (x, y) => this.terrain.displayHeightAt(x, y));
     this.bus.on('terrainChanged', (e) => {
-      // 形变动画结束后（缓动收敛需要几帧），补一次贴地
-      setTimeout(() => this.doodads?.refreshHeights(e.x0, e.y0, e.x1, e.y1), 600);
+      // 形变动画结束后（缓动收敛需要几帧），补一次贴地；teardown 后 doodads 置 null 自弃
+      setTimeout(() => { if (!this.fx?.dead) this.doodads?.refreshHeights(e.x0, e.y0, e.x1, e.y1); }, 600);
     });
 
     // 云影（低频漂移，god view 氛围）
@@ -160,6 +160,8 @@ export class Renderer {
   }
 
   destroy(): void {
+    if (this.fx) this.fx.dead = true;
+    this.doodads = null;
     this.app?.destroy(true, { children: true, texture: false });
   }
 }
