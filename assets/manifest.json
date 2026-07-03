@@ -84,6 +84,48 @@
         "sprites/avatar_a.png",
         "sprites/avatar_b.png"
       ]
+    },
+    "doodads": {
+      "model": "openai/gpt-5-image",
+      "at": "2026-07-02T17:22:24.179Z",
+      "outputs": [
+        "sprites/tree_oak.png",
+        "sprites/tree_pine.png",
+        "sprites/tree_palm.png",
+        "sprites/rock_big.png",
+        "sprites/rock_small.png",
+        "sprites/bush_flower.png",
+        "sprites/tree_dead.png",
+        "sprites/reeds.png",
+        "sprites/mushroom.png"
+      ]
+    },
+    "buildings2": {
+      "model": "openai/gpt-5.4-image-2",
+      "at": "2026-07-02T17:25:30.956Z",
+      "outputs": [
+        "sprites/barracks_a.png",
+        "sprites/mageschool_a.png",
+        "sprites/sanctum_a.png",
+        "sprites/barracks_b.png",
+        "sprites/mageschool_b.png",
+        "sprites/sanctum_b.png",
+        "sprites/tower_a.png",
+        "sprites/tower_b.png",
+        "sprites/wildtent.png"
+      ]
+    },
+    "icons2": {
+      "model": "openai/gpt-5.4-image-2",
+      "at": "2026-07-02T17:28:11.435Z",
+      "outputs": [
+        "icons/firestorm.png",
+        "icons/teleport.png",
+        "icons/barracks.png",
+        "icons/mageschool.png",
+        "icons/sanctum.png",
+        "icons/tower.png"
+      ]
     }
   },
   "files": {
@@ -117,6 +159,30 @@
     "sprites/ruin.png": true,
     "ui/emblem.png": true,
     "sprites/avatar_a.png": true,
-    "sprites/avatar_b.png": true
+    "sprites/avatar_b.png": true,
+    "sprites/tree_oak.png": true,
+    "sprites/tree_pine.png": true,
+    "sprites/tree_palm.png": true,
+    "sprites/rock_big.png": true,
+    "sprites/rock_small.png": true,
+    "sprites/bush_flower.png": true,
+    "sprites/tree_dead.png": true,
+    "sprites/reeds.png": true,
+    "sprites/mushroom.png": true,
+    "sprites/barracks_a.png": true,
+    "sprites/mageschool_a.png": true,
+    "sprites/sanctum_a.png": true,
+    "sprites/barracks_b.png": true,
+    "sprites/mageschool_b.png": true,
+    "sprites/sanctum_b.png": true,
+    "sprites/tower_a.png": true,
+    "sprites/tower_b.png": true,
+    "sprites/wildtent.png": true,
+    "icons/firestorm.png": true,
+    "icons/teleport.png": true,
+    "icons/barracks.png": true,
+    "icons/mageschool.png": true,
+    "icons/sanctum.png": true,
+    "icons/tower.png": true
   }
 }
